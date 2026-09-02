@@ -1,0 +1,209 @@
+package cli
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/localpilot/localpilot/internal/agent"
+	"github.com/localpilot/localpilot/internal/output"
+	"github.com/spf13/cobra"
+)
+
+var rootCmd = &cobra.Command{
+	Use:   "localpilot",
+	Short: "Your command center for everything running on your machine",
+	Long:  "LocalPilot helps you discover, understand, diagnose, and control everything running on localhost.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		a, err := agent.New()
+		if err != nil {
+			return err
+		}
+
+		ports, err := a.ListPorts(context.Background())
+		if err != nil {
+			return err
+		}
+
+		output.PrintDashboard(ports)
+		return nil
+	},
+}
+
+// Execute runs the root command.
+func Execute() error {
+	return rootCmd.Execute()
+}
+
+func init() {
+	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(portCmd)
+	rootCmd.AddCommand(inspectCmd)
+	rootCmd.AddCommand(killCmd)
+}
+
+var listCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List running processes and listening ports",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		a, err := agent.New()
+		if err != nil {
+			return err
+		}
+
+		ports, err := a.ListPorts(context.Background())
+		if err != nil {
+			return err
+		}
+
+		output.PrintList(ports)
+		return nil
+	},
+}
+
+var portCmd = &cobra.Command{
+	Use:   "port <PORT>",
+	Short: "Find what is using a port",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		port, err := parsePort(args[0])
+		if err != nil {
+			return err
+		}
+
+		a, err := agent.New()
+		if err != nil {
+			return err
+		}
+
+		binding, err := a.FindPort(context.Background(), port)
+		if err != nil {
+			return err
+		}
+
+		output.PrintPortDoctor(binding)
+		return nil
+	},
+}
+
+var inspectCmd = &cobra.Command{
+	Use:   "inspect <PID>",
+	Short: "Inspect a process in detail",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		pid, err := parsePID(args[0])
+		if err != nil {
+			return err
+		}
+
+		a, err := agent.New()
+		if err != nil {
+			return err
+		}
+
+		proc, err := a.InspectProcess(context.Background(), pid)
+		if err != nil {
+			return err
+		}
+
+		project := agent.DetectProject(proc.Cwd)
+		output.PrintInspect(proc, project)
+		return nil
+	},
+}
+
+var killForce bool
+
+var killCmd = &cobra.Command{
+	Use:   "kill <PID|PORT>",
+	Short: "Safely terminate a process",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		a, err := agent.New()
+		if err != nil {
+			return err
+		}
+
+		target := args[0]
+		ctx := context.Background()
+
+		// Try as PID first, then as port.
+		pid, pidErr := parsePID(target)
+		if pidErr == nil {
+			proc, err := a.InspectProcess(ctx, pid)
+			if err != nil {
+				return fmt.Errorf("process %d not found", pid)
+			}
+			project := agent.DetectProject(proc.Cwd)
+
+			if !killForce {
+				output.PrintKillByPIDConfirmation(proc, project)
+				if !confirm() {
+					fmt.Println("Cancelled.")
+					return nil
+				}
+			}
+
+			if err := a.Kill(ctx, pid, killForce); err != nil {
+				return fmt.Errorf("failed to kill process %d: %w", pid, err)
+			}
+			fmt.Printf("Process %d terminated.\n", pid)
+			return nil
+		}
+
+		port, portErr := parsePort(target)
+		if portErr != nil {
+			return fmt.Errorf("invalid target: must be a PID or port number")
+		}
+
+		binding, err := a.FindPort(ctx, port)
+		if err != nil {
+			return err
+		}
+		if !binding.InUse || binding.Process == nil {
+			return fmt.Errorf("port %d is not in use", port)
+		}
+
+		if !killForce {
+			output.PrintKillConfirmation(binding)
+			if !confirm() {
+				fmt.Println("Cancelled.")
+				return nil
+			}
+		}
+
+		if err := a.Kill(ctx, binding.Process.PID, killForce); err != nil {
+			return fmt.Errorf("failed to kill process %d: %w", binding.Process.PID, err)
+		}
+		fmt.Printf("Process %d (port %d) terminated.\n", binding.Process.PID, port)
+		return nil
+	},
+}
+
+func init() {
+	killCmd.Flags().BoolVar(&killForce, "force", false, "Skip confirmation and force kill")
+}
+
+func parsePort(s string) (int, error) {
+	var port int
+	_, err := fmt.Sscanf(s, "%d", &port)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, fmt.Errorf("invalid port: %s", s)
+	}
+	return port, nil
+}
+
+func parsePID(s string) (int32, error) {
+	var pid int
+	_, err := fmt.Sscanf(s, "%d", &pid)
+	if err != nil || pid < 1 {
+		return 0, fmt.Errorf("invalid PID: %s", s)
+	}
+	return int32(pid), nil
+}
+
+func confirm() bool {
+	fmt.Print("Are you sure? [y/N] ")
+	var response string
+	fmt.Scanln(&response)
+	return response == "y" || response == "Y"
+}
