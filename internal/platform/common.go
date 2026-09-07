@@ -242,13 +242,13 @@ func gitBranch(repoPath string) string {
 
 func detectFramework(projectPath string) string {
 	markers := map[string]string{
-		"package.json":    "Node.js",
-		"pom.xml":         "Java/Maven",
-		"build.gradle":    "Java/Gradle",
-		"go.mod":          "Go",
-		"pyproject.toml":  "Python",
-		"requirements.txt": "Python",
-		"Cargo.toml":      "Rust",
+		"package.json":       "Node.js",
+		"pom.xml":            "Java/Maven",
+		"build.gradle":       "Java/Gradle",
+		"go.mod":             "Go",
+		"pyproject.toml":     "Python",
+		"requirements.txt":   "Python",
+		"Cargo.toml":         "Rust",
 		"docker-compose.yml": "Docker Compose",
 	}
 

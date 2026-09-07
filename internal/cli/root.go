@@ -2,17 +2,25 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/localpilot/localpilot/internal/agent"
 	"github.com/localpilot/localpilot/internal/output"
 	"github.com/spf13/cobra"
 )
 
+// version is set at build time via -ldflags "-X ...cli.version=vX.Y.Z".
+var version = "dev"
+
 var rootCmd = &cobra.Command{
-	Use:   "localpilot",
-	Short: "Your command center for everything running on your machine",
-	Long:  "LocalPilot helps you discover, understand, diagnose, and control everything running on localhost.",
+	Use:           "localpilot",
+	Short:         "Your command center for everything running on your machine",
+	Long:          "LocalPilot helps you discover, understand, diagnose, and control everything running on localhost.",
+	Version:       version,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		a, err := agent.New()
 		if err != nil {
@@ -41,6 +49,8 @@ func init() {
 	rootCmd.AddCommand(killCmd)
 }
 
+var listJSON bool
+
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List running processes and listening ports",
@@ -55,10 +65,15 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
+		if listJSON {
+			return printJSON(ports)
+		}
 		output.PrintList(ports)
 		return nil
 	},
 }
+
+var portJSON bool
 
 var portCmd = &cobra.Command{
 	Use:   "port <PORT>",
@@ -80,10 +95,15 @@ var portCmd = &cobra.Command{
 			return err
 		}
 
+		if portJSON {
+			return printJSON(binding)
+		}
 		output.PrintPortDoctor(binding)
 		return nil
 	},
 }
+
+var inspectJSON bool
 
 var inspectCmd = &cobra.Command{
 	Use:   "inspect <PID>",
@@ -106,6 +126,13 @@ var inspectCmd = &cobra.Command{
 		}
 
 		project := agent.DetectProject(proc.Cwd)
+
+		if inspectJSON {
+			return printJSON(struct {
+				Process interface{} `json:"process"`
+				Project interface{} `json:"project"`
+			}{proc, project})
+		}
 		output.PrintInspect(proc, project)
 		return nil
 	},
@@ -126,61 +153,71 @@ var killCmd = &cobra.Command{
 		target := args[0]
 		ctx := context.Background()
 
-		// Try as PID first, then as port.
-		pid, pidErr := parsePID(target)
-		if pidErr == nil {
-			proc, err := a.InspectProcess(ctx, pid)
+		// PID and port ranges overlap on Linux (pid_max is commonly well
+		// under 65535), so a bare number like "3000" is ambiguous. Ports are
+		// the documented, primary use of `kill <target>` (see README), and
+		// resolving to the wrong PID here means killing an unrelated
+		// process — so a port match always wins over a PID match.
+		if port, portErr := parsePort(target); portErr == nil {
+			binding, err := a.FindPort(ctx, port)
 			if err != nil {
-				return fmt.Errorf("process %d not found", pid)
+				return err
 			}
-			project := agent.DetectProject(proc.Cwd)
-
-			if !killForce {
-				output.PrintKillByPIDConfirmation(proc, project)
-				if !confirm() {
-					fmt.Println("Cancelled.")
-					return nil
+			if binding.InUse && binding.Process != nil {
+				if !killForce {
+					output.PrintKillConfirmation(binding)
+					if !confirm() {
+						fmt.Println("Cancelled.")
+						return nil
+					}
 				}
-			}
 
-			if err := a.Kill(ctx, pid, killForce); err != nil {
-				return fmt.Errorf("failed to kill process %d: %w", pid, err)
+				if err := a.Kill(ctx, binding.Process.PID, killForce); err != nil {
+					return fmt.Errorf("failed to kill process %d: %w", binding.Process.PID, err)
+				}
+				fmt.Printf("Process %d (port %d) terminated.\n", binding.Process.PID, port)
+				return nil
 			}
-			fmt.Printf("Process %d terminated.\n", pid)
-			return nil
 		}
 
-		port, portErr := parsePort(target)
-		if portErr != nil {
+		pid, pidErr := parsePID(target)
+		if pidErr != nil {
 			return fmt.Errorf("invalid target: must be a PID or port number")
 		}
 
-		binding, err := a.FindPort(ctx, port)
+		proc, err := a.InspectProcess(ctx, pid)
 		if err != nil {
-			return err
+			return fmt.Errorf("no listening port and no process found for %q", target)
 		}
-		if !binding.InUse || binding.Process == nil {
-			return fmt.Errorf("port %d is not in use", port)
-		}
+		project := agent.DetectProject(proc.Cwd)
 
 		if !killForce {
-			output.PrintKillConfirmation(binding)
+			output.PrintKillByPIDConfirmation(proc, project)
 			if !confirm() {
 				fmt.Println("Cancelled.")
 				return nil
 			}
 		}
 
-		if err := a.Kill(ctx, binding.Process.PID, killForce); err != nil {
-			return fmt.Errorf("failed to kill process %d: %w", binding.Process.PID, err)
+		if err := a.Kill(ctx, pid, killForce); err != nil {
+			return fmt.Errorf("failed to kill process %d: %w", pid, err)
 		}
-		fmt.Printf("Process %d (port %d) terminated.\n", binding.Process.PID, port)
+		fmt.Printf("Process %d terminated.\n", pid)
 		return nil
 	},
 }
 
 func init() {
 	killCmd.Flags().BoolVar(&killForce, "force", false, "Skip confirmation and force kill")
+	listCmd.Flags().BoolVar(&listJSON, "json", false, "Output as JSON")
+	portCmd.Flags().BoolVar(&portJSON, "json", false, "Output as JSON")
+	inspectCmd.Flags().BoolVar(&inspectJSON, "json", false, "Output as JSON")
+}
+
+func printJSON(v interface{}) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
 }
 
 func parsePort(s string) (int, error) {

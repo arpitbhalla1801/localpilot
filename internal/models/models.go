@@ -37,11 +37,11 @@ type Project struct {
 
 // Service represents a logical service within a project.
 type Service struct {
-	Name      string
-	Project   *Project
-	Process   *Process
-	Ports     []int
-	Status    string
+	Name    string
+	Project *Project
+	Process *Process
+	Ports   []int
+	Status  string
 }
 
 // PortBinding summarizes a port with its owning process and project context.
