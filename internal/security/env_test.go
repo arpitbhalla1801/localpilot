@@ -30,6 +30,29 @@ func TestMaskEnvironment(t *testing.T) {
 	}
 }
 
+func TestMaskEnvironment_NilAndEmpty(t *testing.T) {
+	if got := MaskEnvironment(nil); got != nil {
+		t.Errorf("MaskEnvironment(nil) = %v, want nil", got)
+	}
+	empty := map[string]string{}
+	got := MaskEnvironment(empty)
+	if got == nil || len(got) != 0 {
+		t.Errorf("MaskEnvironment(empty) = %v, want empty map", got)
+	}
+}
+
+func TestIsSensitive_CaseInsensitive(t *testing.T) {
+	if !isSensitive("api_key") {
+		t.Error("expected lowercase api_key to be sensitive")
+	}
+	if !isSensitive("API_KEY") {
+		t.Error("expected uppercase API_KEY to be sensitive")
+	}
+	if !isSensitive("ApiKey") {
+		t.Error("expected mixed-case ApiKey to be sensitive")
+	}
+}
+
 func TestIsSensitive(t *testing.T) {
 	sensitive := []string{"API_KEY", "my_password", "SECRET_TOKEN", "auth_header"}
 	for _, key := range sensitive {
