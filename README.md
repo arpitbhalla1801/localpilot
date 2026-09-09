@@ -93,7 +93,7 @@ Platform adapters hide OS-specific process and network inspection behind a commo
 |----------|--------|
 | Linux    | Supported |
 | macOS    | Supported |
-| Windows  | Planned |
+| Windows  | Supported |
 | WSL      | Planned |
 
 ## Security
@@ -115,7 +115,7 @@ go build -o localpilot ./cmd/localpilot
 - [x] v0.1 — Port Doctor (`port`, `inspect`, `kill`, `list`)
 - [ ] v0.2 — Docker integration, terminal dashboard, project detection
 - [ ] v0.3 — Web dashboard, diagnostics, stale process detection
-- [ ] v0.4 — Project profiles, `up`/`down`, Windows/WSL support
+- [x] v0.4 — Windows support added (WSL planned)
 
 ## License
 

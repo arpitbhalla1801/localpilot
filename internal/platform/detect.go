@@ -12,6 +12,8 @@ func NewProvider() (ProcessProvider, error) {
 		return &LinuxProvider{}, nil
 	case "darwin":
 		return &MacOSProvider{}, nil
+	case "windows":
+		return &WindowsProvider{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported platform: %s (Linux and macOS are supported in v0.1)", runtime.GOOS)
 	}
