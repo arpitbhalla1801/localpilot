@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/localpilot/localpilot/internal/agent"
+	"github.com/localpilot/localpilot/internal/models"
 	"github.com/localpilot/localpilot/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -32,6 +33,8 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
+		ports = filterPorts(ports)
+
 		output.PrintDashboard(ports)
 		return nil
 	},
@@ -50,6 +53,26 @@ func init() {
 }
 
 var listJSON bool
+var showAll bool
+
+func filterPorts(ports []models.Port) []models.Port {
+	if showAll {
+		return ports
+	}
+	var filtered []models.Port
+	for _, p := range ports {
+		// Hide processes we identify as system/background noise
+		if p.Process != nil && output.IsSystemOrBackgroundProcess(p.Process.Name) {
+			continue
+		}
+		// Also hide completely empty/restricted ports where no process info was found
+		if p.Process != nil && p.Process.Name == "Restricted" {
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+	return filtered
+}
 
 var listCmd = &cobra.Command{
 	Use:   "list",
@@ -64,6 +87,8 @@ var listCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
+		ports = filterPorts(ports)
 
 		if listJSON {
 			return printJSON(ports)
@@ -208,6 +233,8 @@ var killCmd = &cobra.Command{
 }
 
 func init() {
+	rootCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
+	listCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
 	killCmd.Flags().BoolVar(&killForce, "force", false, "Skip confirmation and force kill")
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "Output as JSON")
 	portCmd.Flags().BoolVar(&portJSON, "json", false, "Output as JSON")

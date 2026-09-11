@@ -223,7 +223,7 @@ func PrintList(ports []models.Port) {
 			name = p.Process.Name
 			pid = fmt.Sprintf("%d", p.Process.PID)
 
-			if !p.Process.StartTime.IsZero() && time.Since(p.Process.StartTime) > 48*time.Hour {
+			if !p.Process.StartTime.IsZero() && time.Since(p.Process.StartTime) > 48*time.Hour && !IsSystemOrBackgroundProcess(name) {
 				status = "⚠ STALE"
 			}
 		} else if p.PID > 0 {
@@ -264,14 +264,14 @@ func PrintKillByPIDConfirmation(proc *models.Process, project *models.Project) {
 // PrintDashboard is the default view when running `localpilot`.
 func PrintDashboard(ports []models.Port) {
 	fmt.Println()
-	fmt.Println("┌─────────────────────────────────────────────────────────────────┐")
-	fmt.Println("│                         LOCALPILOT                              │")
-	fmt.Println("├──────────┬──────────┬──────────────┬──────────┬─────────────────┤")
-	fmt.Println("│ PROJECT  │ SERVICE  │ PORT         │ PROCESS  │ STATUS          │")
-	fmt.Println("├──────────┼──────────┼──────────────┼──────────┼─────────────────┤")
+	fmt.Println("┌────────────────────────────────────────────────────────────────────────┐")
+	fmt.Println("│                          LOCALPILOT                                  │")
+	fmt.Println("├──────────┬──────────┬─────────────────────┬──────────┬─────────────────┤")
+	fmt.Println("│ PROJECT  │ SERVICE  │ PORT                │ PROCESS  │ STATUS          │")
+	fmt.Println("├──────────┼──────────┼─────────────────────┼──────────┼─────────────────┤")
 
 	if len(ports) == 0 {
-		fmt.Println("│ (no listening ports detected)                                   │")
+		fmt.Println("│ (no listening ports detected)                                        │")
 	} else {
 		for _, p := range ports {
 			project := "-"
@@ -288,23 +288,23 @@ func PrintDashboard(ports []models.Port) {
 					}
 					service = truncate(filepath.Base(p.Process.Cwd), 10)
 				}
-				if !p.Process.StartTime.IsZero() && time.Since(p.Process.StartTime) > 48*time.Hour {
-					status = "⚠ Suspicious"
+				if !p.Process.StartTime.IsZero() && time.Since(p.Process.StartTime) > 48*time.Hour && !IsSystemOrBackgroundProcess(processName) {
+					status = "⚠ Stale"
 				}
 			}
 
-			portStr := fmt.Sprintf("localhost:%d", p.Number)
-			fmt.Printf("│ %-8s │ %-8s │ %-12s │ %-8s │ %-15s │\n",
+			portStr := fmt.Sprintf("%s:%d", p.Address, p.Number)
+			fmt.Printf("│ %-8s │ %-8s │ %-19s │ %-8s │ %-15s │\n",
 				truncate(project, 8),
 				truncate(service, 8),
-				truncate(portStr, 12),
+				portStr,
 				truncate(processName, 8),
 				truncate(status, 15),
 			)
 		}
 	}
 
-	fmt.Println("└──────────┴──────────┴──────────────┴──────────┴─────────────────┘")
+	fmt.Println("└──────────┴──────────┴─────────────────────┴──────────┴─────────────────┘")
 	fmt.Println()
 	fmt.Printf("  %d ports listening\n", len(ports))
 	fmt.Println()
@@ -335,4 +335,17 @@ func detectProjectName(cwd string) string {
 		return filepath.Base(cwd)
 	}
 	return filepath.Base(cwd)
+}
+
+func IsSystemOrBackgroundProcess(name string) bool {
+	lower := strings.ToLower(name)
+	switch lower {
+	// Core Windows System processes
+	case "system", "svchost.exe", "lsass.exe", "wininit.exe", "services.exe", "spoolsv.exe", "csrss.exe", "smss.exe", "explorer.exe", "cmrcservice.exe", "pangps.exe", "jhi_service.exe", "wepsvc.exe", "fppsvc.exe", "searchindexer.exe":
+		return true
+	// Background services / daemons
+	case "mysqld.exe", "postgres.exe", "docker.exe", "wslrelay.exe", "code.exe":
+		return true
+	}
+	return false
 }

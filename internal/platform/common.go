@@ -22,6 +22,9 @@ func enrichProcess(ctx context.Context, pid int32) (*models.Process, error) {
 	}
 
 	name, _ := proc.NameWithContext(ctx)
+	if name == "" {
+		name = "Restricted"
+	}
 	cmdline, _ := proc.CmdlineWithContext(ctx)
 	cwd, _ := proc.CwdWithContext(ctx)
 	cpu, _ := proc.CPUPercentWithContext(ctx)
@@ -34,6 +37,9 @@ func enrichProcess(ctx context.Context, pid int32) (*models.Process, error) {
 	if parent != nil {
 		parentPID = parent.Pid
 		parentName, _ = parent.NameWithContext(ctx)
+		if parentName == "" {
+			parentName = "Restricted"
+		}
 	}
 
 	var memory uint64
