@@ -89,3 +89,26 @@ func TestShortenPath(t *testing.T) {
 		t.Errorf("shortenPath returned empty for non-empty input")
 	}
 }
+
+func TestIsSystemOrBackgroundProcess(t *testing.T) {
+	system := []string{
+		// Windows
+		"svchost.exe", "SYSTEM", "lsass.exe",
+		// macOS
+		"ControlCenter", "rapportd", "coreaudiod", "Code Helper", "Code Helper (Plugin)",
+		// Linux
+		"systemd", "dbus-daemon", "cron",
+	}
+	for _, name := range system {
+		if !IsSystemOrBackgroundProcess(name) {
+			t.Errorf("IsSystemOrBackgroundProcess(%q) = false, want true", name)
+		}
+	}
+
+	notSystem := []string{"node", "python", "Code Helper (GPU) extra", "myapp"}
+	for _, name := range notSystem {
+		if IsSystemOrBackgroundProcess(name) {
+			t.Errorf("IsSystemOrBackgroundProcess(%q) = true, want false", name)
+		}
+	}
+}
