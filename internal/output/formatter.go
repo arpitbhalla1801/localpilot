@@ -231,7 +231,7 @@ func PrintList(ports []models.Port) {
 		}
 
 		addr := fmt.Sprintf("%s:%d", p.Address, p.Number)
-		fmt.Printf("%-20s %-12s %-8s %-8s %s\n", addr, name, fmt.Sprintf("%d", p.Number), pid, status)
+		fmt.Printf("%-20s %-12s %-8s %-8s %s\n", truncate(addr, 20), truncate(name, 12), fmt.Sprintf("%d", p.Number), pid, status)
 	}
 }
 
