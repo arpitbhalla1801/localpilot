@@ -2,6 +2,7 @@
 /localpilot
 /bin/
 /dist/
+/tests/.bin/
 
 # Go
 *.exe
