@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/localpilot/localpilot/internal/agent"
 	"github.com/localpilot/localpilot/internal/models"
@@ -248,8 +249,10 @@ func printJSON(v interface{}) error {
 }
 
 func parsePort(s string) (int, error) {
-	var port int
-	_, err := fmt.Sscanf(s, "%d", &port)
+	if s == "" || s[0] == '+' {
+		return 0, fmt.Errorf("invalid port: %s", s)
+	}
+	port, err := strconv.Atoi(s)
 	if err != nil || port < 1 || port > 65535 {
 		return 0, fmt.Errorf("invalid port: %s", s)
 	}
@@ -257,8 +260,10 @@ func parsePort(s string) (int, error) {
 }
 
 func parsePID(s string) (int32, error) {
-	var pid int
-	_, err := fmt.Sscanf(s, "%d", &pid)
+	if s == "" || s[0] == '+' {
+		return 0, fmt.Errorf("invalid PID: %s", s)
+	}
+	pid, err := strconv.Atoi(s)
 	if err != nil || pid < 1 {
 		return 0, fmt.Errorf("invalid PID: %s", s)
 	}

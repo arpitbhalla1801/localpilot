@@ -16,6 +16,11 @@ func TestParsePort(t *testing.T) {
 		{"65536", 0, true},
 		{"abc", 0, true},
 		{"-1", 0, true},
+		{"3000abc", 0, true},
+		{"+80", 0, true},
+		{"30 00", 0, true},
+		{" 3000", 0, true},
+		{"3000 ", 0, true},
 	}
 
 	for _, tt := range tests {
@@ -47,6 +52,8 @@ func TestParsePID(t *testing.T) {
 		{"0", 0, true},
 		{"abc", 0, true},
 		{"-1", 0, true},
+		{"1234xyz", 0, true},
+		{"+1234", 0, true},
 	}
 
 	for _, tt := range tests {
