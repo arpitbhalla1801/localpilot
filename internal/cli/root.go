@@ -206,11 +206,20 @@ var killForce bool
 var killCmd = &cobra.Command{
 	Use:   "kill <PID|PORT>",
 	Short: "Safely terminate a process",
-	Args:  cobra.ExactArgs(1),
+	Long: "Safely terminate a process by PID or port.\n\n" +
+		"Without --force, this prompts for confirmation (\"Are you sure? [y/N]\")\n" +
+		"before killing anything. If stdin is not a terminal, that prompt can\n" +
+		"never be answered, so --force is required for non-interactive use\n" +
+		"(scripts, cron, CI, agents).",
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		a, err := agent.New()
 		if err != nil {
 			return err
+		}
+
+		if !killForce && !isInteractiveStdin() {
+			return fmt.Errorf("refusing to prompt for confirmation: stdin is not a terminal; pass --force to kill non-interactively")
 		}
 
 		target := args[0]
@@ -312,4 +321,14 @@ func confirm() bool {
 	var response string
 	fmt.Scanln(&response)
 	return response == "y" || response == "Y"
+}
+
+// isInteractiveStdin reports whether stdin is attached to a terminal,
+// i.e. whether a confirmation prompt could ever actually be answered.
+// Note this is not the same as stdin being a character device: /dev/null
+// (the common case for cron/CI/agents launched without a controlling
+// terminal) is itself a character device, so that check alone isn't
+// enough to catch it.
+func isInteractiveStdin() bool {
+	return isTerminal(int(os.Stdin.Fd()))
 }
