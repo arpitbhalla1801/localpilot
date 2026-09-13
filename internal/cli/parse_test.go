@@ -1,6 +1,9 @@
 package cli
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestParsePort(t *testing.T) {
 	tests := []struct {
@@ -71,5 +74,30 @@ func TestParsePID(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("parsePID(%s) = %d, want %d", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestInsertDashDashForNegativeArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{"inspect negative", []string{"inspect", "-5"}, []string{"inspect", "--", "-5"}},
+		{"port negative", []string{"port", "-5"}, []string{"port", "--", "-5"}},
+		{"kill negative", []string{"kill", "-5"}, []string{"kill", "--", "-5"}},
+		{"positive PID untouched", []string{"inspect", "5"}, []string{"inspect", "5"}},
+		{"already has --", []string{"inspect", "--", "-5"}, []string{"inspect", "--", "-5"}},
+		{"other flag untouched", []string{"kill", "--force"}, []string{"kill", "--force"}},
+		{"unrelated command untouched", []string{"list", "-5"}, []string{"list", "-5"}},
+		{"list --all unaffected", []string{"list", "--all"}, []string{"list", "--all"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := insertDashDashForNegativeArgs(tt.in)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("insertDashDashForNegativeArgs(%v) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
 	}
 }

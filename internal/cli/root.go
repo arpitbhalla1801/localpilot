@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 
 	"github.com/localpilot/localpilot/internal/agent"
@@ -43,7 +44,43 @@ var rootCmd = &cobra.Command{
 
 // Execute runs the root command.
 func Execute() error {
+	rootCmd.SetArgs(insertDashDashForNegativeArgs(os.Args[1:]))
 	return rootCmd.Execute()
+}
+
+// negativeNumberArg and commandsWithBareNumericArg support
+// insertDashDashForNegativeArgs below.
+var negativeNumberArg = regexp.MustCompile(`^-[0-9]+$`)
+
+var commandsWithBareNumericArg = map[string]bool{
+	"port":    true,
+	"inspect": true,
+	"kill":    true,
+}
+
+// insertDashDashForNegativeArgs rewrites e.g. "inspect -5" to
+// "inspect -- -5". Without this, pflag treats a leading "-5" as an
+// (unknown) shorthand flag cluster rather than the command's
+// positional PID/port argument, producing a confusing "unknown
+// shorthand flag" error instead of our own "invalid PID"/"invalid
+// port" message.
+func insertDashDashForNegativeArgs(args []string) []string {
+	for i, a := range args {
+		if a == "--" {
+			return args
+		}
+		if !commandsWithBareNumericArg[a] {
+			continue
+		}
+		if i+1 < len(args) && negativeNumberArg.MatchString(args[i+1]) {
+			out := make([]string, 0, len(args)+1)
+			out = append(out, args[:i+1]...)
+			out = append(out, "--")
+			out = append(out, args[i+1:]...)
+			return out
+		}
+	}
+	return args
 }
 
 func init() {
