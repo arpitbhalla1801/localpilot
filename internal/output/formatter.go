@@ -312,10 +312,11 @@ func PrintDashboard(ports []models.Port) {
 }
 
 func truncate(s string, max int) string {
-	if len(s) <= max {
+	r := []rune(s)
+	if len(r) <= max {
 		return s
 	}
-	return s[:max-1] + "…"
+	return string(r[:max-1]) + "…"
 }
 
 func detectProjectName(cwd string) string {

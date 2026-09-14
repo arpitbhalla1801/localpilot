@@ -3,6 +3,7 @@ package output
 import (
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestFormatBytes(t *testing.T) {
@@ -71,10 +72,16 @@ func TestTruncate(t *testing.T) {
 		{"exact", 5, "exact"},
 		{"toolongstring", 8, "toolong…"},
 		{"", 5, ""},
+		{"emoji_😀😃😄😁😆_dir", 10, "emoji_😀😃😄…"},
+		{"café_naïve_résumé", 8, "café_na…"},
 	}
 	for _, tt := range tests {
-		if got := truncate(tt.in, tt.max); got != tt.want {
+		got := truncate(tt.in, tt.max)
+		if got != tt.want {
 			t.Errorf("truncate(%q, %d) = %q, want %q", tt.in, tt.max, got, tt.want)
+		}
+		if !utf8.ValidString(got) {
+			t.Errorf("truncate(%q, %d) = %q, which is not valid UTF-8", tt.in, tt.max, got)
 		}
 	}
 }
