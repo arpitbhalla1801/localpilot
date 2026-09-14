@@ -94,6 +94,16 @@ func init() {
 var listJSON bool
 var showAll bool
 
+// nonNilPorts ensures a JSON list endpoint always marshals to "[]" for an
+// empty result rather than "null" (Go's encoding/json for a nil slice),
+// which a caller expecting an array to iterate would otherwise choke on.
+func nonNilPorts(ports []models.Port) []models.Port {
+	if ports == nil {
+		return []models.Port{}
+	}
+	return ports
+}
+
 func filterPorts(ports []models.Port) []models.Port {
 	if showAll {
 		return ports
@@ -130,7 +140,7 @@ var listCmd = &cobra.Command{
 		ports = filterPorts(ports)
 
 		if listJSON {
-			return printJSON(ports)
+			return printJSON(nonNilPorts(ports))
 		}
 		output.PrintList(ports)
 		return nil

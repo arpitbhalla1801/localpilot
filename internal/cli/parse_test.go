@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
+
+	"github.com/localpilot/localpilot/internal/models"
 )
 
 func TestParsePort(t *testing.T) {
@@ -103,5 +106,24 @@ func TestInsertDashDashForNegativeArgs(t *testing.T) {
 				t.Errorf("insertDashDashForNegativeArgs(%v) = %v, want %v", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNonNilPorts(t *testing.T) {
+	if got := nonNilPorts(nil); got == nil {
+		t.Error("nonNilPorts(nil) returned nil, want an empty non-nil slice")
+	}
+
+	b, err := json.Marshal(nonNilPorts(nil))
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+	if string(b) != "[]" {
+		t.Errorf("json.Marshal(nonNilPorts(nil)) = %s, want []", b)
+	}
+
+	populated := []models.Port{{Number: 80}}
+	if got := nonNilPorts(populated); len(got) != 1 {
+		t.Errorf("nonNilPorts(populated) = %v, want unchanged populated slice", got)
 	}
 }
