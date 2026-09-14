@@ -21,6 +21,24 @@ func shortenPath(path string) string {
 	return path
 }
 
+// sanitize neutralizes control characters (including ANSI/CSI/OSC escape
+// sequences, embedded newlines, and other C0 control bytes) in strings
+// that originate from process metadata — cwd, command, name, project
+// info — before they're written to the terminal. That data comes from
+// whatever process the user asks to inspect, so it must never be trusted
+// to behave like a normal, single-line value.
+func sanitize(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			fmt.Fprintf(&b, "\\x%02x", r)
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 func formatBytes(bytes uint64) string {
 	const unit = 1024
 	if bytes < unit {
@@ -84,7 +102,7 @@ func PrintPortDoctor(binding *models.PortBinding) {
 	fmt.Println("Process")
 	fmt.Println("────────────────────────────────────")
 	fmt.Printf("PID             %d\n", proc.PID)
-	fmt.Printf("Name            %s\n", proc.Name)
+	fmt.Printf("Name            %s\n", sanitize(proc.Name))
 	fmt.Printf("CPU             %.1f%%\n", proc.CPUPercent)
 	fmt.Printf("Memory          %s\n", formatBytes(proc.MemoryBytes))
 	fmt.Printf("Started         %s\n", formatTime(proc.StartTime))
@@ -93,7 +111,7 @@ func PrintPortDoctor(binding *models.PortBinding) {
 	fmt.Println("Command")
 	fmt.Println("────────────────────────────────────")
 	if proc.Command != "" {
-		fmt.Println(proc.Command)
+		fmt.Println(sanitize(proc.Command))
 	} else {
 		fmt.Println("(unknown)")
 	}
@@ -102,19 +120,19 @@ func PrintPortDoctor(binding *models.PortBinding) {
 		fmt.Println()
 		fmt.Println("Working Directory")
 		fmt.Println("────────────────────────────────────")
-		fmt.Println(shortenPath(proc.Cwd))
+		fmt.Println(sanitize(shortenPath(proc.Cwd)))
 	}
 
 	if binding.Project != nil {
 		fmt.Println()
 		fmt.Println("Git Repository")
 		fmt.Println("────────────────────────────────────")
-		fmt.Println(binding.Project.Name)
+		fmt.Println(sanitize(binding.Project.Name))
 		if binding.Project.Branch != "" {
-			fmt.Printf("Branch: %s\n", binding.Project.Branch)
+			fmt.Printf("Branch: %s\n", sanitize(binding.Project.Branch))
 		}
 		if binding.Project.Framework != "" {
-			fmt.Printf("Framework: %s\n", binding.Project.Framework)
+			fmt.Printf("Framework: %s\n", sanitize(binding.Project.Framework))
 		}
 	}
 
@@ -122,7 +140,7 @@ func PrintPortDoctor(binding *models.PortBinding) {
 		fmt.Println()
 		fmt.Println("Parent Process")
 		fmt.Println("────────────────────────────────────")
-		fmt.Printf("%s (PID %d)\n", proc.ParentName, proc.ParentPID)
+		fmt.Printf("%s (PID %d)\n", sanitize(proc.ParentName), proc.ParentPID)
 	}
 
 	fmt.Println("────────────────────────────────────")
@@ -130,7 +148,7 @@ func PrintPortDoctor(binding *models.PortBinding) {
 	fmt.Printf("  localpilot inspect %d\n", proc.PID)
 	fmt.Printf("  localpilot kill %d\n", proc.PID)
 	if binding.Project != nil {
-		fmt.Printf("  Project: %s\n", shortenPath(binding.Project.Path))
+		fmt.Printf("  Project: %s\n", sanitize(shortenPath(binding.Project.Path)))
 	}
 }
 
@@ -139,7 +157,7 @@ func PrintInspect(proc *models.Process, project *models.Project) {
 	fmt.Println("PROCESS")
 	fmt.Println("────────────────────────────────────")
 	fmt.Printf("PID             %d\n", proc.PID)
-	fmt.Printf("Name            %s\n", proc.Name)
+	fmt.Printf("Name            %s\n", sanitize(proc.Name))
 	fmt.Printf("CPU             %.1f%%\n", proc.CPUPercent)
 	fmt.Printf("Memory          %s\n", formatBytes(proc.MemoryBytes))
 	fmt.Printf("Started         %s\n", formatTime(proc.StartTime))
@@ -151,7 +169,7 @@ func PrintInspect(proc *models.Process, project *models.Project) {
 	fmt.Println()
 	fmt.Println("Command")
 	if proc.Command != "" {
-		fmt.Printf("  %s\n", proc.Command)
+		fmt.Printf("  %s\n", sanitize(proc.Command))
 	} else {
 		fmt.Println("  (unknown)")
 	}
@@ -159,25 +177,25 @@ func PrintInspect(proc *models.Process, project *models.Project) {
 	if proc.Cwd != "" {
 		fmt.Println()
 		fmt.Println("Working Directory")
-		fmt.Printf("  %s\n", shortenPath(proc.Cwd))
+		fmt.Printf("  %s\n", sanitize(shortenPath(proc.Cwd)))
 	}
 
 	if project != nil {
 		fmt.Println()
 		fmt.Println("Project")
-		fmt.Printf("  %s\n", project.Name)
+		fmt.Printf("  %s\n", sanitize(project.Name))
 		if project.Branch != "" {
-			fmt.Printf("Git Branch\n  %s\n", project.Branch)
+			fmt.Printf("Git Branch\n  %s\n", sanitize(project.Branch))
 		}
 		if project.Framework != "" {
-			fmt.Printf("Framework\n  %s\n", project.Framework)
+			fmt.Printf("Framework\n  %s\n", sanitize(project.Framework))
 		}
 	}
 
 	if proc.ParentName != "" {
 		fmt.Println()
 		fmt.Println("Parent")
-		fmt.Printf("  %s (PID %d)\n", proc.ParentName, proc.ParentPID)
+		fmt.Printf("  %s (PID %d)\n", sanitize(proc.ParentName), proc.ParentPID)
 	}
 
 	if len(proc.OpenPorts) > 0 {
@@ -197,7 +215,7 @@ func PrintInspect(proc *models.Process, project *models.Project) {
 				fmt.Printf("  ... and %d more\n", len(proc.Environment)-20)
 				break
 			}
-			fmt.Printf("  %s=%s\n", key, val)
+			fmt.Printf("  %s=%s\n", sanitize(key), sanitize(val))
 			count++
 		}
 	}
@@ -220,7 +238,7 @@ func PrintList(ports []models.Port) {
 		status := "● RUNNING"
 
 		if p.Process != nil {
-			name = p.Process.Name
+			name = sanitize(p.Process.Name)
 			pid = fmt.Sprintf("%d", p.Process.PID)
 
 			if !p.Process.StartTime.IsZero() && time.Since(p.Process.StartTime) > 48*time.Hour && !IsSystemOrBackgroundProcess(name) {
@@ -239,10 +257,10 @@ func PrintList(ports []models.Port) {
 func PrintKillConfirmation(binding *models.PortBinding) {
 	if binding.Process != nil {
 		fmt.Printf("Port %d is used by:\n", binding.Port)
-		fmt.Printf("  %s\n", binding.Process.Name)
+		fmt.Printf("  %s\n", sanitize(binding.Process.Name))
 		fmt.Printf("  PID: %d\n", binding.Process.PID)
 		if binding.Project != nil {
-			fmt.Printf("  Project: %s\n", binding.Project.Name)
+			fmt.Printf("  Project: %s\n", sanitize(binding.Project.Name))
 		}
 	} else {
 		fmt.Printf("Process PID %d\n", binding.Process.PID)
@@ -252,12 +270,12 @@ func PrintKillConfirmation(binding *models.PortBinding) {
 // PrintKillByPIDConfirmation shows PID kill confirmation.
 func PrintKillByPIDConfirmation(proc *models.Process, project *models.Project) {
 	fmt.Printf("About to terminate:\n")
-	fmt.Printf("  %s (PID %d)\n", proc.Name, proc.PID)
+	fmt.Printf("  %s (PID %d)\n", sanitize(proc.Name), proc.PID)
 	if proc.Command != "" {
-		fmt.Printf("  Command: %s\n", proc.Command)
+		fmt.Printf("  Command: %s\n", sanitize(proc.Command))
 	}
 	if project != nil {
-		fmt.Printf("  Project: %s\n", project.Name)
+		fmt.Printf("  Project: %s\n", sanitize(project.Name))
 	}
 }
 
@@ -280,13 +298,13 @@ func PrintDashboard(ports []models.Port) {
 			status := "● Running"
 
 			if p.Process != nil {
-				processName = p.Process.Name
+				processName = sanitize(p.Process.Name)
 				if p.Process.Cwd != "" {
 					detected := detectProjectName(p.Process.Cwd)
 					if detected != "" {
-						project = truncate(detected, 10)
+						project = truncate(sanitize(detected), 10)
 					}
-					service = truncate(filepath.Base(p.Process.Cwd), 10)
+					service = truncate(sanitize(filepath.Base(p.Process.Cwd)), 10)
 				}
 				if !p.Process.StartTime.IsZero() && time.Since(p.Process.StartTime) > 48*time.Hour && !IsSystemOrBackgroundProcess(processName) {
 					status = "⚠ Stale"

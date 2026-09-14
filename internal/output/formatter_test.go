@@ -1,6 +1,7 @@
 package output
 
 import (
+	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -59,6 +60,28 @@ func TestFormatStarted(t *testing.T) {
 	recent := time.Now().Add(-5 * time.Minute)
 	if got := formatStarted(recent); got != "5 minutes ago" {
 		t.Errorf("formatStarted(recent) = %q, want '5 minutes ago'", got)
+	}
+}
+
+func TestSanitize(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"normal text", "normal text"},
+		{"evil\x1b[31mRED\x1b[0m", "evil\\x1b[31mRED\\x1b[0m"},
+		{"tab\ttab", "tab\\x09tab"},
+		{"line1\nline2", "line1\\x0aline2"},
+		{"del\x7fchar", "del\\x7fchar"},
+	}
+	for _, tt := range tests {
+		got := sanitize(tt.in)
+		if got != tt.want {
+			t.Errorf("sanitize(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+		if strings.ContainsAny(got, "\x1b\t\n\x7f") {
+			t.Errorf("sanitize(%q) = %q still contains a raw control character", tt.in, got)
+		}
 	}
 }
 
