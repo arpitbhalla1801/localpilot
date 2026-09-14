@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"regexp"
 	"strconv"
@@ -310,7 +311,7 @@ func parsePID(s string) (int32, error) {
 		return 0, fmt.Errorf("invalid PID: %s", s)
 	}
 	pid, err := strconv.Atoi(s)
-	if err != nil || pid < 1 {
+	if err != nil || pid < 1 || pid > math.MaxInt32 {
 		return 0, fmt.Errorf("invalid PID: %s", s)
 	}
 	return int32(pid), nil

@@ -57,6 +57,10 @@ func TestParsePID(t *testing.T) {
 		{"-1", 0, true},
 		{"1234xyz", 0, true},
 		{"+1234", 0, true},
+		{"2147483647", 2147483647, false}, // math.MaxInt32
+		{"2147483648", 0, true},           // math.MaxInt32 + 1
+		{"4294967296", 0, true},           // 2^32, wraps to 0 as int32 if unchecked
+		{"4294967297", 0, true},           // 2^32 + 1, wraps to 1 as int32 if unchecked
 	}
 
 	for _, tt := range tests {
