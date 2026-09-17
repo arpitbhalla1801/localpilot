@@ -106,6 +106,41 @@ localpilot watch 12345 --interval 500ms
 | `localpilot watch <PID\|PORT>` | Live-updating view of a port or process, until Ctrl+C |
 | `localpilot watch --interval <duration>` | Set the refresh interval (default `1s`) |
 
+## Shell Completion
+
+LocalPilot generates completion scripts for bash, zsh, fish, and PowerShell via `localpilot completion <shell>`.
+
+**Bash**
+
+```bash
+# Linux
+localpilot completion bash | sudo tee /etc/bash_completion.d/localpilot > /dev/null
+
+# macOS (Homebrew's bash-completion@2)
+localpilot completion bash > "$(brew --prefix)/etc/bash_completion.d/localpilot"
+```
+
+**Zsh**
+
+```zsh
+# Add to a directory on your $fpath, then start a new shell
+localpilot completion zsh > "${fpath[1]}/_localpilot"
+```
+
+**Fish**
+
+```fish
+localpilot completion fish > ~/.config/fish/completions/localpilot.fish
+```
+
+**PowerShell**
+
+```powershell
+localpilot completion powershell | Out-String | Invoke-Expression
+
+# To persist across sessions, add the line above to your $PROFILE
+```
+
 ## Example
 
 ```bash
