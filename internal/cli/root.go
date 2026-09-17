@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/signal"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/localpilot/localpilot/internal/agent"
 	"github.com/localpilot/localpilot/internal/models"
@@ -58,6 +60,8 @@ var commandsWithBareNumericArg = map[string]bool{
 	"port":    true,
 	"inspect": true,
 	"kill":    true,
+	"free":    true,
+	"watch":   true,
 }
 
 // insertDashDashForNegativeArgs rewrites e.g. "inspect -5" to
@@ -91,6 +95,7 @@ func init() {
 	rootCmd.AddCommand(inspectCmd)
 	rootCmd.AddCommand(killCmd)
 	rootCmd.AddCommand(freeCmd)
+	rootCmd.AddCommand(watchCmd)
 }
 
 var listJSON bool
@@ -357,11 +362,102 @@ var freeCmd = &cobra.Command{
 	},
 }
 
+var watchInterval time.Duration
+
+// resolveWatchTarget mirrors killCmd's PID/port disambiguation: a bare
+// number is ambiguous between the two, and a port match always wins
+// because `watch <target>` is documented primarily for ports (see README).
+func resolveWatchTarget(ctx context.Context, a *agent.Agent, target string) (port int, pid int32, isPort bool, err error) {
+	if p, portErr := parsePort(target); portErr == nil {
+		binding, findErr := a.FindPort(ctx, p)
+		if findErr == nil && binding.InUse && binding.Process != nil {
+			return p, 0, true, nil
+		}
+	}
+	if id, pidErr := parsePID(target); pidErr == nil {
+		return 0, id, false, nil
+	}
+	return 0, 0, false, fmt.Errorf("invalid target: must be a PID or port number")
+}
+
+// watchTick renders one snapshot for the resolved target. It never returns
+// an error for "process is gone" — that's an expected, displayable state
+// for a flapping service, which is the whole point of `watch`.
+func watchTick(ctx context.Context, a *agent.Agent, port int, pid int32, isPort bool) {
+	fmt.Print("\x1b[H\x1b[2J")
+	fmt.Printf("Every %s — Ctrl+C to exit — %s\n\n", watchInterval, time.Now().Format("15:04:05"))
+
+	if isPort {
+		binding, err := a.FindPort(ctx, port)
+		if err != nil {
+			fmt.Printf("Error checking port %d: %v\n", port, err)
+			return
+		}
+		output.PrintPortDoctor(binding)
+		return
+	}
+
+	proc, err := a.InspectProcess(ctx, pid)
+	if err != nil {
+		fmt.Printf("Process %d is not running.\n", pid)
+		return
+	}
+	project := agent.DetectProject(proc.Cwd)
+	output.PrintInspect(proc, project)
+}
+
+// runWatch drives the refresh loop until ctx is cancelled (e.g. Ctrl+C).
+func runWatch(ctx context.Context, a *agent.Agent, target string) error {
+	port, pid, isPort, err := resolveWatchTarget(ctx, a, target)
+	if err != nil {
+		return err
+	}
+
+	watchTick(ctx, a, port, pid, isPort)
+
+	ticker := time.NewTicker(watchInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			watchTick(ctx, a, port, pid, isPort)
+		}
+	}
+}
+
+var watchCmd = &cobra.Command{
+	Use:   "watch <PID|PORT>",
+	Short: "Live-updating view of a port or process",
+	Long: "Live-updating view of a port or process, refreshed on an interval\n" +
+		"until interrupted with Ctrl+C.\n\n" +
+		"Useful for debugging a service that flaps or restarts, without\n" +
+		"re-running `port`/`inspect` manually in a loop.",
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if watchInterval <= 0 {
+			return fmt.Errorf("invalid --interval: must be greater than 0")
+		}
+
+		a, err := agent.New()
+		if err != nil {
+			return err
+		}
+
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+
+		return runWatch(ctx, a, args[0])
+	},
+}
+
 func init() {
 	rootCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
 	listCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
 	killCmd.Flags().BoolVar(&killForce, "force", false, "Skip confirmation and force kill")
 	freeCmd.Flags().BoolVar(&freeForce, "force", false, "Skip confirmation and force kill")
+	watchCmd.Flags().DurationVar(&watchInterval, "interval", time.Second, "Refresh interval (e.g. 1s, 500ms)")
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "Output as JSON")
 	listCmd.Flags().StringVar(&listRange, "range", "", "Only show ports within <start>-<end>, e.g. 3000-4000")
 	portCmd.Flags().BoolVar(&portJSON, "json", false, "Output as JSON")

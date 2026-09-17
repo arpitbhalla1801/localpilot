@@ -84,6 +84,10 @@ localpilot list
 
 # List ports within a range (e.g. a known dev-server band)
 localpilot list --range 3000-4000
+
+# Watch a port or process for changes (Ctrl+C to exit)
+localpilot watch 3000
+localpilot watch 12345 --interval 500ms
 ```
 
 ## Commands
@@ -99,6 +103,8 @@ localpilot list --range 3000-4000
 | `localpilot kill --force` | Skip confirmation and force kill |
 | `localpilot free <PORT>` | Kill whatever is listening on a port (unambiguous: always a port) |
 | `localpilot free --force` | Skip confirmation and force free |
+| `localpilot watch <PID\|PORT>` | Live-updating view of a port or process, until Ctrl+C |
+| `localpilot watch --interval <duration>` | Set the refresh interval (default `1s`) |
 
 ## Example
 
