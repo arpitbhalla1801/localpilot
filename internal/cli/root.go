@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/localpilot/localpilot/internal/agent"
 	"github.com/localpilot/localpilot/internal/models"
@@ -124,6 +125,8 @@ func filterPorts(ports []models.Port) []models.Port {
 	return filtered
 }
 
+var listRange string
+
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List running processes and listening ports",
@@ -139,6 +142,14 @@ var listCmd = &cobra.Command{
 		}
 
 		ports = filterPorts(ports)
+
+		if listRange != "" {
+			start, end, err := parsePortRange(listRange)
+			if err != nil {
+				return err
+			}
+			ports = filterPortRange(ports, start, end)
+		}
 
 		if listJSON {
 			return printJSON(nonNilPorts(ports))
@@ -352,6 +363,7 @@ func init() {
 	killCmd.Flags().BoolVar(&killForce, "force", false, "Skip confirmation and force kill")
 	freeCmd.Flags().BoolVar(&freeForce, "force", false, "Skip confirmation and force kill")
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "Output as JSON")
+	listCmd.Flags().StringVar(&listRange, "range", "", "Only show ports within <start>-<end>, e.g. 3000-4000")
 	portCmd.Flags().BoolVar(&portJSON, "json", false, "Output as JSON")
 	inspectCmd.Flags().BoolVar(&inspectJSON, "json", false, "Output as JSON")
 }
@@ -360,6 +372,38 @@ func printJSON(v interface{}) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
+}
+
+// parsePortRange parses a "<start>-<end>" string into its bounds, e.g.
+// "3000-4000". Both bounds must be valid ports and start must not exceed
+// end.
+func parsePortRange(s string) (start, end int, err error) {
+	parts := strings.SplitN(s, "-", 2)
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("invalid range %q: expected format <start>-<end>, e.g. 3000-4000", s)
+	}
+	start, err = parsePort(parts[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid range %q: %w", s, err)
+	}
+	end, err = parsePort(parts[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid range %q: %w", s, err)
+	}
+	if start > end {
+		return 0, 0, fmt.Errorf("invalid range %q: start must not exceed end", s)
+	}
+	return start, end, nil
+}
+
+func filterPortRange(ports []models.Port, start, end int) []models.Port {
+	var filtered []models.Port
+	for _, p := range ports {
+		if p.Number >= start && p.Number <= end {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered
 }
 
 func parsePort(s string) (int, error) {

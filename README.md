@@ -81,6 +81,9 @@ localpilot free 3000 --force
 
 # List all listening ports
 localpilot list
+
+# List ports within a range (e.g. a known dev-server band)
+localpilot list --range 3000-4000
 ```
 
 ## Commands
@@ -89,6 +92,7 @@ localpilot list
 |---------|-------------|
 | `localpilot` | Show the localhost dashboard |
 | `localpilot list` | List running processes and listening ports |
+| `localpilot list --range <start>-<end>` | Only show ports within a range, e.g. `3000-4000` |
 | `localpilot port <PORT>` | Find what is using a port |
 | `localpilot inspect <PID>` | Inspect a process in detail |
 | `localpilot kill <PID\|PORT>` | Safely terminate a process |

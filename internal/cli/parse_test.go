@@ -84,6 +84,69 @@ func TestParsePID(t *testing.T) {
 	}
 }
 
+func TestParsePortRange(t *testing.T) {
+	tests := []struct {
+		input     string
+		wantStart int
+		wantEnd   int
+		wantErr   bool
+	}{
+		{"3000-4000", 3000, 4000, false},
+		{"80-80", 80, 80, false},
+		{"1-65535", 1, 65535, false},
+		{"4000-3000", 0, 0, true}, // start > end
+		{"3000", 0, 0, true},      // missing dash
+		{"3000-", 0, 0, true},
+		{"-4000", 0, 0, true},
+		{"abc-4000", 0, 0, true},
+		{"3000-abc", 0, 0, true},
+		{"0-4000", 0, 0, true},     // invalid start port
+		{"3000-65536", 0, 0, true}, // invalid end port
+	}
+
+	for _, tt := range tests {
+		start, end, err := parsePortRange(tt.input)
+		if tt.wantErr {
+			if err == nil {
+				t.Errorf("parsePortRange(%s) expected error", tt.input)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("parsePortRange(%s) unexpected error: %v", tt.input, err)
+			continue
+		}
+		if start != tt.wantStart || end != tt.wantEnd {
+			t.Errorf("parsePortRange(%s) = (%d, %d), want (%d, %d)", tt.input, start, end, tt.wantStart, tt.wantEnd)
+		}
+	}
+}
+
+func TestFilterPortRange(t *testing.T) {
+	ports := []models.Port{
+		{Number: 22},
+		{Number: 3000},
+		{Number: 3306},
+		{Number: 8080},
+		{Number: 9999},
+	}
+
+	got := filterPortRange(ports, 3000, 8080)
+	want := []int{3000, 3306, 8080}
+	if len(got) != len(want) {
+		t.Fatalf("filterPortRange returned %d ports, want %d: %+v", len(got), len(want), got)
+	}
+	for i, p := range got {
+		if p.Number != want[i] {
+			t.Errorf("filterPortRange()[%d].Number = %d, want %d", i, p.Number, want[i])
+		}
+	}
+
+	if got := filterPortRange(ports, 10000, 20000); len(got) != 0 {
+		t.Errorf("filterPortRange with no matches = %+v, want empty", got)
+	}
+}
+
 func TestInsertDashDashForNegativeArgs(t *testing.T) {
 	tests := []struct {
 		name string
@@ -107,6 +170,15 @@ func TestInsertDashDashForNegativeArgs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestListCmd_InvalidRange(t *testing.T) {
+	rootCmd.SetArgs([]string{"list", "--range", "not-a-range"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for invalid --range")
+	}
+	listRange = ""
 }
 
 func TestNonNilPorts(t *testing.T) {
