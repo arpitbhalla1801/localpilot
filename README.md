@@ -6,27 +6,77 @@ LocalPilot is a developer-first CLI that helps you discover, understand, diagnos
 
 No more jumping between `lsof`, `ps`, `netstat`, `docker ps`, and `kill -9`.
 
+## Installation
+
+### Option 1: Download a release binary (recommended)
+
+Grab the archive for your platform from the [latest release](https://github.com/arpitbhalla1801/localpilot/releases/latest), then extract it and put the binary on your `PATH`.
+
+**macOS / Linux:**
+
+```bash
+# macOS (Apple Silicon)
+curl -sL https://github.com/arpitbhalla1801/localpilot/releases/latest/download/localpilot_Darwin_arm64.tar.gz | tar -xz
+
+# macOS (Intel)
+curl -sL https://github.com/arpitbhalla1801/localpilot/releases/latest/download/localpilot_Darwin_x86_64.tar.gz | tar -xz
+
+# Linux (x86_64)
+curl -sL https://github.com/arpitbhalla1801/localpilot/releases/latest/download/localpilot_Linux_x86_64.tar.gz | tar -xz
+
+# Linux (arm64)
+curl -sL https://github.com/arpitbhalla1801/localpilot/releases/latest/download/localpilot_Linux_arm64.tar.gz | tar -xz
+
+# then move it onto your PATH
+sudo mv localpilot /usr/local/bin/
+```
+
+**Windows:** download `localpilot_Windows_x86_64.zip` (or `_arm64` on ARM) from the [releases page](https://github.com/arpitbhalla1801/localpilot/releases/latest), extract it, and add the folder to your `PATH`.
+
+Every release also publishes a `checksums.txt` — verify your download with `shasum -a 256 -c checksums.txt` (macOS/Linux) if you want to confirm integrity.
+
+### Option 2: `go install`
+
+If you already have Go 1.22+ set up:
+
+```bash
+go install github.com/arpitbhalla1801/localpilot/cmd/localpilot@latest
+```
+
+This installs `localpilot` into `$(go env GOPATH)/bin` — make sure that directory is on your `PATH`.
+
+### Option 3: Build from source
+
+```bash
+git clone https://github.com/arpitbhalla1801/localpilot.git
+cd localpilot
+go build -o localpilot ./cmd/localpilot
+```
+
+### Verify it's installed
+
+```bash
+localpilot --version
+```
+
 ## Quick Start
 
 ```bash
-# Build
-go build -o localpilot ./cmd/localpilot
-
 # Show dashboard
-./localpilot
+localpilot
 
 # Find what's using a port
-./localpilot port 3000
+localpilot port 3000
 
 # Inspect a process
-./localpilot inspect 12345
+localpilot inspect 12345
 
 # Kill by port or PID (with confirmation)
-./localpilot kill 3000
-./localpilot kill 12345 --force
+localpilot kill 3000
+localpilot kill 12345 --force
 
 # List all listening ports
-./localpilot list
+localpilot list
 ```
 
 ## Commands
