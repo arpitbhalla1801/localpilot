@@ -89,6 +89,7 @@ func init() {
 	rootCmd.AddCommand(portCmd)
 	rootCmd.AddCommand(inspectCmd)
 	rootCmd.AddCommand(killCmd)
+	rootCmd.AddCommand(freeCmd)
 }
 
 var listJSON bool
@@ -290,10 +291,66 @@ var killCmd = &cobra.Command{
 	},
 }
 
+var freeForce bool
+
+var freeCmd = &cobra.Command{
+	Use:   "free <PORT>",
+	Short: "Kill whatever is listening on a port",
+	Long: "Free a port by killing the process listening on it.\n\n" +
+		"Unlike `kill`, the argument is always interpreted as a port, never a\n" +
+		"PID, so there is no ambiguity between the two.\n\n" +
+		"Without --force, this prompts for confirmation (\"Are you sure? [y/N]\")\n" +
+		"before killing anything. If stdin is not a terminal, that prompt can\n" +
+		"never be answered, so --force is required for non-interactive use\n" +
+		"(scripts, cron, CI, agents).",
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		port, err := parsePort(args[0])
+		if err != nil {
+			return err
+		}
+
+		a, err := agent.New()
+		if err != nil {
+			return err
+		}
+
+		if !freeForce && !isInteractiveStdin() {
+			return fmt.Errorf("refusing to prompt for confirmation: stdin is not a terminal; pass --force to free non-interactively")
+		}
+
+		ctx := context.Background()
+		binding, err := a.FindPort(ctx, port)
+		if err != nil {
+			return err
+		}
+
+		if !binding.InUse || binding.Process == nil {
+			fmt.Printf("Port %d is not in use.\n", port)
+			return nil
+		}
+
+		if !freeForce {
+			output.PrintKillConfirmation(binding)
+			if !confirm() {
+				fmt.Println("Cancelled.")
+				return nil
+			}
+		}
+
+		if err := a.Kill(ctx, binding.Process.PID, freeForce); err != nil {
+			return fmt.Errorf("failed to kill process %d: %w", binding.Process.PID, err)
+		}
+		fmt.Printf("Process %d (port %d) terminated.\n", binding.Process.PID, port)
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
 	listCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
 	killCmd.Flags().BoolVar(&killForce, "force", false, "Skip confirmation and force kill")
+	freeCmd.Flags().BoolVar(&freeForce, "force", false, "Skip confirmation and force kill")
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "Output as JSON")
 	portCmd.Flags().BoolVar(&portJSON, "json", false, "Output as JSON")
 	inspectCmd.Flags().BoolVar(&inspectJSON, "json", false, "Output as JSON")

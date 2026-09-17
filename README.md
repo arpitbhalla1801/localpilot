@@ -75,6 +75,10 @@ localpilot inspect 12345
 localpilot kill 3000
 localpilot kill 12345 --force
 
+# Free a port (always treats the argument as a port, never a PID)
+localpilot free 3000
+localpilot free 3000 --force
+
 # List all listening ports
 localpilot list
 ```
@@ -89,6 +93,8 @@ localpilot list
 | `localpilot inspect <PID>` | Inspect a process in detail |
 | `localpilot kill <PID\|PORT>` | Safely terminate a process |
 | `localpilot kill --force` | Skip confirmation and force kill |
+| `localpilot free <PORT>` | Kill whatever is listening on a port (unambiguous: always a port) |
+| `localpilot free --force` | Skip confirmation and force free |
 
 ## Example
 
@@ -150,7 +156,7 @@ Platform adapters hide OS-specific process and network inspection behind a commo
 
 - **Local-first**: No data leaves your machine
 - **Secrets masked**: Sensitive environment variables are redacted by default
-- **Confirmation required**: `kill` prompts before terminating unless `--force` is used
+- **Confirmation required**: `kill` and `free` prompt before terminating unless `--force` is used
 
 ## Development
 
