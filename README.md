@@ -75,6 +75,9 @@ localpilot inspect 12345
 localpilot kill 3000
 localpilot kill 12345 --force
 
+# Kill non-interactively and get structured output for scripts
+localpilot kill 3000 --force --json
+
 # Free a port (always treats the argument as a port, never a PID)
 localpilot free 3000
 localpilot free 3000 --force
@@ -105,6 +108,24 @@ localpilot watch 12345 --interval 500ms
 | `localpilot free --force` | Skip confirmation and force free |
 | `localpilot watch <PID\|PORT>` | Live-updating view of a port or process, until Ctrl+C |
 | `localpilot watch --interval <duration>` | Set the refresh interval (default `1s`) |
+
+## Scripting with `--json`
+
+`list`, `port`, `inspect`, `kill`, and `free` all support `--json` for piping into `jq` or other tooling:
+
+```bash
+localpilot list --json | jq '.[].port'
+localpilot port 3000 --json | jq '.process.pid'
+localpilot inspect 12345 --json | jq '.process.name'
+localpilot kill 3000 --force --json | jq '.terminated'
+localpilot free 3000 --force --json | jq '.terminated'
+```
+
+Notes for scripting:
+
+- `list --json` always outputs an array — `[]` when empty, never `null`.
+- `kill --json` and `free --json` require `--force`: a confirmation prompt on stdout would otherwise corrupt output a script expects to be JSON.
+- `kill`/`free` share a result shape: `{"pid": <int>, "port": <int, omitted if killed by PID>, "terminated": <bool>, "cancelled": <bool, omitted if false>}`.
 
 ## Shell Completion
 

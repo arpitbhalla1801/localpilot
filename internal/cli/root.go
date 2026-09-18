@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/signal"
@@ -157,7 +158,7 @@ var listCmd = &cobra.Command{
 		}
 
 		if listJSON {
-			return printJSON(nonNilPorts(ports))
+			return printJSON(cmd.OutOrStdout(), nonNilPorts(ports))
 		}
 		output.PrintList(ports)
 		return nil
@@ -187,7 +188,7 @@ var portCmd = &cobra.Command{
 		}
 
 		if portJSON {
-			return printJSON(binding)
+			return printJSON(cmd.OutOrStdout(), binding)
 		}
 		output.PrintPortDoctor(binding)
 		return nil
@@ -219,7 +220,7 @@ var inspectCmd = &cobra.Command{
 		project := agent.DetectProject(proc.Cwd)
 
 		if inspectJSON {
-			return printJSON(struct {
+			return printJSON(cmd.OutOrStdout(), struct {
 				Process interface{} `json:"process"`
 				Project interface{} `json:"project"`
 			}{proc, project})
@@ -230,6 +231,16 @@ var inspectCmd = &cobra.Command{
 }
 
 var killForce bool
+var killJSON bool
+
+// terminationResult is the --json payload shared by kill and free, so
+// scripts piping into jq see the same shape from either command.
+type terminationResult struct {
+	PID        int32 `json:"pid"`
+	Port       *int  `json:"port,omitempty"`
+	Terminated bool  `json:"terminated"`
+	Cancelled  bool  `json:"cancelled,omitempty"`
+}
 
 var killCmd = &cobra.Command{
 	Use:   "kill <PID|PORT>",
@@ -238,9 +249,15 @@ var killCmd = &cobra.Command{
 		"Without --force, this prompts for confirmation (\"Are you sure? [y/N]\")\n" +
 		"before killing anything. If stdin is not a terminal, that prompt can\n" +
 		"never be answered, so --force is required for non-interactive use\n" +
-		"(scripts, cron, CI, agents).",
+		"(scripts, cron, CI, agents).\n\n" +
+		"--json requires --force: an interactive confirmation prompt would\n" +
+		"otherwise corrupt stdout for a script expecting JSON.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if killJSON && !killForce {
+			return fmt.Errorf("--json requires --force")
+		}
+
 		a, err := agent.New()
 		if err != nil {
 			return err
@@ -275,6 +292,9 @@ var killCmd = &cobra.Command{
 				if err := a.Kill(ctx, binding.Process.PID, killForce); err != nil {
 					return fmt.Errorf("failed to kill process %d: %w", binding.Process.PID, err)
 				}
+				if killJSON {
+					return printJSON(cmd.OutOrStdout(), terminationResult{PID: binding.Process.PID, Port: &port, Terminated: true})
+				}
 				fmt.Printf("Process %d (port %d) terminated.\n", binding.Process.PID, port)
 				return nil
 			}
@@ -302,12 +322,16 @@ var killCmd = &cobra.Command{
 		if err := a.Kill(ctx, pid, killForce); err != nil {
 			return fmt.Errorf("failed to kill process %d: %w", pid, err)
 		}
+		if killJSON {
+			return printJSON(cmd.OutOrStdout(), terminationResult{PID: pid, Terminated: true})
+		}
 		fmt.Printf("Process %d terminated.\n", pid)
 		return nil
 	},
 }
 
 var freeForce bool
+var freeJSON bool
 
 var freeCmd = &cobra.Command{
 	Use:   "free <PORT>",
@@ -318,9 +342,15 @@ var freeCmd = &cobra.Command{
 		"Without --force, this prompts for confirmation (\"Are you sure? [y/N]\")\n" +
 		"before killing anything. If stdin is not a terminal, that prompt can\n" +
 		"never be answered, so --force is required for non-interactive use\n" +
-		"(scripts, cron, CI, agents).",
+		"(scripts, cron, CI, agents).\n\n" +
+		"--json requires --force: an interactive confirmation prompt would\n" +
+		"otherwise corrupt stdout for a script expecting JSON.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if freeJSON && !freeForce {
+			return fmt.Errorf("--json requires --force")
+		}
+
 		port, err := parsePort(args[0])
 		if err != nil {
 			return err
@@ -342,6 +372,9 @@ var freeCmd = &cobra.Command{
 		}
 
 		if !binding.InUse || binding.Process == nil {
+			if freeJSON {
+				return printJSON(cmd.OutOrStdout(), terminationResult{Port: &port, Terminated: false})
+			}
 			fmt.Printf("Port %d is not in use.\n", port)
 			return nil
 		}
@@ -356,6 +389,9 @@ var freeCmd = &cobra.Command{
 
 		if err := a.Kill(ctx, binding.Process.PID, freeForce); err != nil {
 			return fmt.Errorf("failed to kill process %d: %w", binding.Process.PID, err)
+		}
+		if freeJSON {
+			return printJSON(cmd.OutOrStdout(), terminationResult{PID: binding.Process.PID, Port: &port, Terminated: true})
 		}
 		fmt.Printf("Process %d (port %d) terminated.\n", binding.Process.PID, port)
 		return nil
@@ -456,7 +492,9 @@ func init() {
 	rootCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
 	listCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
 	killCmd.Flags().BoolVar(&killForce, "force", false, "Skip confirmation and force kill")
+	killCmd.Flags().BoolVar(&killJSON, "json", false, "Output as JSON (requires --force)")
 	freeCmd.Flags().BoolVar(&freeForce, "force", false, "Skip confirmation and force kill")
+	freeCmd.Flags().BoolVar(&freeJSON, "json", false, "Output as JSON (requires --force)")
 	watchCmd.Flags().DurationVar(&watchInterval, "interval", time.Second, "Refresh interval (e.g. 1s, 500ms)")
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "Output as JSON")
 	listCmd.Flags().StringVar(&listRange, "range", "", "Only show ports within <start>-<end>, e.g. 3000-4000")
@@ -464,8 +502,11 @@ func init() {
 	inspectCmd.Flags().BoolVar(&inspectJSON, "json", false, "Output as JSON")
 }
 
-func printJSON(v interface{}) error {
-	enc := json.NewEncoder(os.Stdout)
+// printJSON writes to w rather than os.Stdout directly so JSON output is
+// captured correctly by cmd.SetOut in tests, and honors any output
+// redirection a caller sets up.
+func printJSON(w io.Writer, v interface{}) error {
+	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
 }
