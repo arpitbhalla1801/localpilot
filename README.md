@@ -8,7 +8,15 @@ No more jumping between `lsof`, `ps`, `netstat`, `docker ps`, and `kill -9`.
 
 ## Installation
 
-### Option 1: Download a release binary (recommended)
+### Option 1: Homebrew (macOS/Linux, recommended)
+
+```bash
+brew install arpitbhalla1801/tap/localpilot
+```
+
+This also installs man pages and shell completions automatically.
+
+### Option 2: Download a release binary
 
 Grab the archive for your platform from the [latest release](https://github.com/arpitbhalla1801/localpilot/releases/latest), then extract it and put the binary on your `PATH`.
 
@@ -42,7 +50,7 @@ curl -sLO https://github.com/arpitbhalla1801/localpilot/releases/latest/download
 sudo dpkg -i localpilot_amd64.deb
 ```
 
-### Option 2: `go install`
+### Option 3: `go install`
 
 If you already have Go 1.22+ set up:
 
@@ -52,7 +60,7 @@ go install github.com/arpitbhalla1801/localpilot/cmd/localpilot@latest
 
 This installs `localpilot` into `$(go env GOPATH)/bin` — make sure that directory is on your `PATH`.
 
-### Option 3: Build from source
+### Option 4: Build from source
 
 ```bash
 git clone https://github.com/arpitbhalla1801/localpilot.git

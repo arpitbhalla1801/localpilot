@@ -30,3 +30,9 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A PAT with write access to arpitbhalla1801/homebrew-tap, so
+          # goreleaser can push the formula there. The default
+          # GITHUB_TOKEN above is scoped to this repo only and can't push
+          # to a different one. Create this secret in repo settings
+          # before tagging a release, or the brews step will fail.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

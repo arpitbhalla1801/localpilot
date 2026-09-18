@@ -60,6 +60,27 @@ nfpms:
         dst: /usr/share/man/man1/localpilot-free.1
       - src: ./man/localpilot-watch.1
         dst: /usr/share/man/man1/localpilot-watch.1
+brews:
+  - name: localpilot
+    repository:
+      owner: arpitbhalla1801
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/arpitbhalla1801/localpilot
+    description: >-
+      Your command center for everything running on localhost — discover,
+      inspect, and safely kill processes by port or PID.
+    license: MIT
+    install: |
+      bin.install "localpilot"
+      man1.install Dir["man/*.1"]
+      bash_completion.install (output = Utils.popen_read(bin/"localpilot", "completion", "bash")) => "localpilot.bash" if output
+      zsh_completion.install (output = Utils.popen_read(bin/"localpilot", "completion", "zsh")) => "_localpilot" if output
+      fish_completion.install (output = Utils.popen_read(bin/"localpilot", "completion", "fish")) => "localpilot.fish" if output
+    test: |
+      system "#{bin}/localpilot", "--version"
 checksum:
   name_template: 'checksums.txt'
 snapshot:
