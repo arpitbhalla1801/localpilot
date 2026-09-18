@@ -162,6 +162,22 @@ localpilot completion powershell | Out-String | Invoke-Expression
 # To persist across sessions, add the line above to your $PROFILE
 ```
 
+## Man Pages
+
+Release archives (and the Homebrew/apt packages once published) include man pages generated from the real command tree, so they never drift from `--help` text:
+
+```bash
+man localpilot
+man localpilot-free
+```
+
+To generate them locally (e.g. to preview a change before release):
+
+```bash
+go run ./tools/gen-man        # writes to ./man
+man ./man/localpilot.1
+```
+
 ## Example
 
 ```bash

@@ -4,6 +4,9 @@
 /dist/
 /tests/.bin/
 
+# Generated docs (see tools/gen-man)
+/man/
+
 # Go
 *.exe
 *.exe~

@@ -23,9 +23,12 @@ import (
 var version = "dev"
 
 var rootCmd = &cobra.Command{
-	Use:           "localpilot",
-	Short:         "Your command center for everything running on your machine",
-	Long:          "LocalPilot helps you discover, understand, diagnose, and control everything running on localhost.",
+	Use:   "localpilot",
+	Short: "Your command center for everything running on your machine",
+	Long:  "LocalPilot helps you discover, understand, diagnose, and control everything running on localhost.",
+	Example: "  localpilot                # dashboard of everything listening on localhost\n" +
+		"  localpilot port 3000       # what's using port 3000?\n" +
+		"  localpilot kill 3000       # free it up (with confirmation)",
 	Version:       version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -51,6 +54,12 @@ var rootCmd = &cobra.Command{
 func Execute() error {
 	rootCmd.SetArgs(insertDashDashForNegativeArgs(os.Args[1:]))
 	return rootCmd.Execute()
+}
+
+// RootCommand exposes the root cobra command for tooling that needs to
+// walk the command tree, such as the man page generator in tools/gen-man.
+func RootCommand() *cobra.Command {
+	return rootCmd
 }
 
 // negativeNumberArg and commandsWithBareNumericArg support
@@ -136,6 +145,10 @@ var listRange string
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List running processes and listening ports",
+	Example: "  localpilot list\n" +
+		"  localpilot list --all               # include system/background processes\n" +
+		"  localpilot list --range 3000-4000   # only a known dev-server port band\n" +
+		"  localpilot list --json | jq '.[].port'",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		a, err := agent.New()
 		if err != nil {
@@ -170,7 +183,9 @@ var portJSON bool
 var portCmd = &cobra.Command{
 	Use:   "port <PORT>",
 	Short: "Find what is using a port",
-	Args:  cobra.ExactArgs(1),
+	Example: "  localpilot port 3000\n" +
+		"  localpilot port 3000 --json | jq '.process.pid'",
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		port, err := parsePort(args[0])
 		if err != nil {
@@ -200,7 +215,9 @@ var inspectJSON bool
 var inspectCmd = &cobra.Command{
 	Use:   "inspect <PID>",
 	Short: "Inspect a process in detail",
-	Args:  cobra.ExactArgs(1),
+	Example: "  localpilot inspect 12345\n" +
+		"  localpilot inspect 12345 --json | jq '.process.command'",
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pid, err := parsePID(args[0])
 		if err != nil {
@@ -252,6 +269,9 @@ var killCmd = &cobra.Command{
 		"(scripts, cron, CI, agents).\n\n" +
 		"--json requires --force: an interactive confirmation prompt would\n" +
 		"otherwise corrupt stdout for a script expecting JSON.",
+	Example: "  localpilot kill 3000            # kill by port, with confirmation\n" +
+		"  localpilot kill 12345 --force   # kill by PID, no confirmation\n" +
+		"  localpilot kill 3000 --force --json",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if killJSON && !killForce {
@@ -345,6 +365,8 @@ var freeCmd = &cobra.Command{
 		"(scripts, cron, CI, agents).\n\n" +
 		"--json requires --force: an interactive confirmation prompt would\n" +
 		"otherwise corrupt stdout for a script expecting JSON.",
+	Example: "  localpilot free 3000            # a dev server left the port bound; free it\n" +
+		"  localpilot free 3000 --force --json",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if freeJSON && !freeForce {
@@ -470,6 +492,8 @@ var watchCmd = &cobra.Command{
 		"until interrupted with Ctrl+C.\n\n" +
 		"Useful for debugging a service that flaps or restarts, without\n" +
 		"re-running `port`/`inspect` manually in a loop.",
+	Example: "  localpilot watch 3000\n" +
+		"  localpilot watch 12345 --interval 500ms",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if watchInterval <= 0 {
