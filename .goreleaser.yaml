@@ -30,6 +30,36 @@ archives:
       - LICENSE*
       - README*
       - man/*
+nfpms:
+  - id: localpilot
+    package_name: localpilot
+    file_name_template: >-
+      {{ .PackageName }}_{{ .Arch }}
+    vendor: LocalPilot
+    homepage: https://github.com/arpitbhalla1801/localpilot
+    maintainer: Arpit Bhalla <arpitbhalla725@gmail.com>
+    description: >-
+      Your command center for everything running on localhost — discover,
+      inspect, and safely kill processes by port or PID.
+    license: MIT
+    formats:
+      - deb
+    bindir: /usr/bin
+    contents:
+      - src: ./man/localpilot.1
+        dst: /usr/share/man/man1/localpilot.1
+      - src: ./man/localpilot-list.1
+        dst: /usr/share/man/man1/localpilot-list.1
+      - src: ./man/localpilot-port.1
+        dst: /usr/share/man/man1/localpilot-port.1
+      - src: ./man/localpilot-inspect.1
+        dst: /usr/share/man/man1/localpilot-inspect.1
+      - src: ./man/localpilot-kill.1
+        dst: /usr/share/man/man1/localpilot-kill.1
+      - src: ./man/localpilot-free.1
+        dst: /usr/share/man/man1/localpilot-free.1
+      - src: ./man/localpilot-watch.1
+        dst: /usr/share/man/man1/localpilot-watch.1
 checksum:
   name_template: 'checksums.txt'
 snapshot:

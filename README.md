@@ -35,6 +35,13 @@ sudo mv localpilot /usr/local/bin/
 
 Every release also publishes a `checksums.txt` — verify your download with `shasum -a 256 -c checksums.txt` (macOS/Linux) if you want to confirm integrity.
 
+**Debian / Ubuntu (.deb):** every release also publishes a `.deb` package (with man pages included):
+
+```bash
+curl -sLO https://github.com/arpitbhalla1801/localpilot/releases/latest/download/localpilot_amd64.deb
+sudo dpkg -i localpilot_amd64.deb
+```
+
 ### Option 2: `go install`
 
 If you already have Go 1.22+ set up:
