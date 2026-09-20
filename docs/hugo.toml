@@ -1,6 +1,5 @@
 baseURL = "https://arpitbhalla1801.github.io/localpilot/"
 title = "LocalPilot"
-theme = "hugo-book"
 
 [module]
   [[module.imports]]
