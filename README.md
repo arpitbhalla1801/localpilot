@@ -4,6 +4,8 @@ Your command center for everything running on your machine.
 
 LocalPilot is a developer-first CLI that helps you discover, understand, diagnose, and control everything running on localhost.
 
+📖 Full docs: https://arpitbhalla1801.github.io/localpilot/
+
 No more jumping between `lsof`, `ps`, `netstat`, `docker ps`, and `kill -9`.
 
 ## Installation

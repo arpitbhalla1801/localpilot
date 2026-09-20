@@ -1,0 +1,16 @@
+baseURL = "https://arpitbhalla1801.github.io/localpilot/"
+languageCode = "en-us"
+title = "LocalPilot"
+theme = "hugo-book"
+
+[module]
+  [[module.imports]]
+    path = "github.com/alex-shpak/hugo-book"
+
+[params]
+  BookRepo = "https://github.com/arpitbhalla1801/localpilot"
+  BookEditPath = "edit/main/docs/content"
+  BookSection = "docs"
+
+[markup.goldmark.renderer]
+  unsafe = true

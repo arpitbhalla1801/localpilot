@@ -4,8 +4,12 @@
 /dist/
 /tests/.bin/
 
-# Generated docs (see tools/gen-man)
+# Generated docs (see tools/gen-man, tools/gen-docs)
 /man/
+/docs/public/
+/docs/resources/
+/docs/content/commands/*.md
+!/docs/content/commands/_index.md
 
 # Go
 *.exe
