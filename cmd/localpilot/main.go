@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/localpilot/localpilot/internal/cli"
+	"github.com/arpitbhalla1801/localpilot/internal/cli"
 )
 
 func main() {

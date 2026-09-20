@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/localpilot/localpilot/internal/agent"
+	"github.com/arpitbhalla1801/localpilot/internal/agent"
 )
 
 func TestFreeCmd_KillsListener(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/localpilot/localpilot/internal/agent"
+	"github.com/arpitbhalla1801/localpilot/internal/agent"
 )
 
 // TestKillFreeJSON_RequiresForce is the audit's core assertion for #27: a

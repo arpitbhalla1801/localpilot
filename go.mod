@@ -1,4 +1,4 @@
-module github.com/localpilot/localpilot
+module github.com/arpitbhalla1801/localpilot
 
 go 1.22.2
 

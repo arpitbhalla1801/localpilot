@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/localpilot/localpilot/internal/models"
+	"github.com/arpitbhalla1801/localpilot/internal/models"
 )
 
 func shortenPath(path string) string {

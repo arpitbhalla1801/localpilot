@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/localpilot/localpilot/internal/cli"
+	"github.com/arpitbhalla1801/localpilot/internal/cli"
 	"github.com/spf13/cobra/doc"
 )
 

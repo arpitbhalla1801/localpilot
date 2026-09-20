@@ -3,8 +3,8 @@ package agent
 import (
 	"context"
 
-	"github.com/localpilot/localpilot/internal/models"
-	"github.com/localpilot/localpilot/internal/platform"
+	"github.com/arpitbhalla1801/localpilot/internal/models"
+	"github.com/arpitbhalla1801/localpilot/internal/platform"
 )
 
 // Agent orchestrates system inspection across platform providers.

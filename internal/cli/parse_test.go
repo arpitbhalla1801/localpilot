@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/localpilot/localpilot/internal/models"
+	"github.com/arpitbhalla1801/localpilot/internal/models"
 )
 
 func TestParsePort(t *testing.T) {

@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/localpilot/localpilot/internal/agent"
-	"github.com/localpilot/localpilot/internal/models"
-	"github.com/localpilot/localpilot/internal/output"
+	"github.com/arpitbhalla1801/localpilot/internal/agent"
+	"github.com/arpitbhalla1801/localpilot/internal/models"
+	"github.com/arpitbhalla1801/localpilot/internal/output"
 	"github.com/spf13/cobra"
 )
 

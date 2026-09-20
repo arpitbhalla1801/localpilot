@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/localpilot/localpilot/internal/models"
-	"github.com/localpilot/localpilot/internal/security"
+	"github.com/arpitbhalla1801/localpilot/internal/models"
+	"github.com/arpitbhalla1801/localpilot/internal/security"
 	"github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
 )
