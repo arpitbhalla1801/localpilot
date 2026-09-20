@@ -43,6 +43,12 @@ jobs:
         id: pages
         uses: actions/configure-pages@v5
 
+      - name: Fetch Hugo modules
+        working-directory: docs
+        run: |
+          [ -f go.mod ] || hugo mod init github.com/arpitbhalla1801/localpilot/docs
+          hugo mod get -u
+
       - name: Build site
         working-directory: docs
         run: hugo --minify --baseURL "${{ steps.pages.outputs.base_url }}"

@@ -1,5 +1,4 @@
 baseURL = "https://arpitbhalla1801.github.io/localpilot/"
-languageCode = "en-us"
 title = "LocalPilot"
 theme = "hugo-book"
 
