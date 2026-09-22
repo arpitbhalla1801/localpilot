@@ -124,8 +124,10 @@ localpilot doctor
 | `localpilot inspect <PID>` | Inspect a process in detail |
 | `localpilot kill <PID\|PORT>` | Safely terminate a process |
 | `localpilot kill --force` | Skip confirmation and force kill |
+| `localpilot kill --force --container` | If the port is Docker-owned, stop the container instead of killing the process |
 | `localpilot free <PORT>` | Kill whatever is listening on a port (unambiguous: always a port) |
 | `localpilot free --force` | Skip confirmation and force free |
+| `localpilot free --force --container` | If the port is Docker-owned, stop the container instead of killing the process |
 | `localpilot watch <PID\|PORT>` | Live-updating view of a port or process, until Ctrl+C |
 | `localpilot watch --interval <duration>` | Set the refresh interval (default `1s`) |
 | `localpilot doctor` | Scan for port conflicts (multiple processes on one port, or projects configured for the same default port) |
@@ -147,7 +149,7 @@ Notes for scripting:
 
 - `list --json` always outputs an array — `[]` when empty, never `null`.
 - `kill --json` and `free --json` require `--force`: a confirmation prompt on stdout would otherwise corrupt output a script expects to be JSON.
-- `kill`/`free` share a result shape: `{"pid": <int>, "port": <int, omitted if killed by PID>, "terminated": <bool>, "cancelled": <bool, omitted if false>}`.
+- `kill`/`free` share a result shape: `{"pid": <int>, "port": <int, omitted if killed by PID>, "terminated": <bool>, "cancelled": <bool, omitted if false>, "container": <string, name, omitted unless --container stopped one>, "containerStopped": <bool, omitted if false>}`.
 
 ## Docker Awareness
 
@@ -163,7 +165,16 @@ Image           nginx:alpine
 ID              2fd6024edf64
 ```
 
-This is read-only detection: LocalPilot doesn't manage containers, only identifies them (killing/stopping the owning container is a separate, tracked feature). It works automatically whenever the `docker` CLI can reach a daemon, and no-ops silently otherwise — Docker isn't required to use LocalPilot.
+Detection works automatically whenever the `docker` CLI can reach a daemon, and no-ops silently otherwise — Docker isn't required to use LocalPilot.
+
+**Stopping a container-owned port:** `kill`/`free` still kill the local process by default (unchanged behavior). If that process is Docker-owned, killing it usually won't actually free the port — Docker keeps it bound to the container. Interactively, you're asked whether to stop the container instead (recommended, and the default answer). Non-interactively (`--force`), pass `--container` explicitly to stop the container — this is never guessed, since there's no one to prompt:
+
+```bash
+localpilot free 3000 --force --container   # stops the container, doesn't touch the process
+localpilot free 3000 --force               # still kills the process only (unchanged default)
+```
+
+> **Note:** on Docker Desktop (macOS/Windows), the process behind a published port is often a single backend process **shared across every container**, not one per container. Force-killing it without `--container` can disrupt unrelated containers, not just the port you're trying to free — LocalPilot warns about this on stderr when it happens. Prefer `--container` on these platforms.
 
 ## Shell Completion
 

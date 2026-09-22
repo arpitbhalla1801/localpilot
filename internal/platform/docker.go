@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -79,6 +80,19 @@ func containerFromPSEntry(entry dockerPSEntry) *models.Container {
 		Name:  strings.TrimPrefix(strings.SplitN(entry.Names, ",", 2)[0], "/"),
 		Image: entry.Image,
 	}
+}
+
+// StopContainer stops a running container by ID via `docker stop`.
+func StopContainer(ctx context.Context, id string) error {
+	out, err := exec.CommandContext(ctx, "docker", "stop", id).CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("docker stop %s: %s", id, msg)
+	}
+	return nil
 }
 
 // parseDockerHostPorts extracts host port numbers from docker ps's Ports

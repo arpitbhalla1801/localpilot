@@ -250,14 +250,41 @@ var inspectCmd = &cobra.Command{
 
 var killForce bool
 var killJSON bool
+var killContainer bool
 
 // terminationResult is the --json payload shared by kill and free, so
 // scripts piping into jq see the same shape from either command.
 type terminationResult struct {
-	PID        int32 `json:"pid"`
-	Port       *int  `json:"port,omitempty"`
-	Terminated bool  `json:"terminated"`
-	Cancelled  bool  `json:"cancelled,omitempty"`
+	PID              int32  `json:"pid"`
+	Port             *int   `json:"port,omitempty"`
+	Terminated       bool   `json:"terminated"`
+	Cancelled        bool   `json:"cancelled,omitempty"`
+	Container        string `json:"container,omitempty"`
+	ContainerStopped bool   `json:"containerStopped,omitempty"`
+}
+
+// resolveContainerStop decides whether to stop the Docker container
+// publishing a port rather than kill the local process that's merely
+// proxying it (killing docker-proxy or Docker Desktop's backend process
+// alone typically doesn't free the port — Docker keeps it bound to the
+// container). container may be nil, meaning the port/process isn't
+// container-owned, in which case this always returns false.
+//
+// In --force mode this is never guessed from context: the caller must
+// pass --container explicitly, since there's no one to prompt. Otherwise
+// the user is asked directly.
+func resolveContainerStop(container *models.Container, proc *models.Process, force, containerFlag bool) bool {
+	if container == nil {
+		return false
+	}
+	if force {
+		return containerFlag
+	}
+	output.PrintContainerConflict(container, proc)
+	fmt.Print("Stop the container instead of killing the process? [Y/n] ")
+	var response string
+	fmt.Scanln(&response)
+	return response == "" || response == "y" || response == "Y"
 }
 
 var killCmd = &cobra.Command{
@@ -269,10 +296,17 @@ var killCmd = &cobra.Command{
 		"never be answered, so --force is required for non-interactive use\n" +
 		"(scripts, cron, CI, agents).\n\n" +
 		"--json requires --force: an interactive confirmation prompt would\n" +
-		"otherwise corrupt stdout for a script expecting JSON.",
-	Example: "  localpilot kill 3000            # kill by port, with confirmation\n" +
-		"  localpilot kill 12345 --force   # kill by PID, no confirmation\n" +
-		"  localpilot kill 3000 --force --json",
+		"otherwise corrupt stdout for a script expecting JSON.\n\n" +
+		"If the port/PID is owned by a Docker container, killing the local\n" +
+		"process (docker-proxy, or Docker Desktop's backend process) usually\n" +
+		"won't free the port — Docker keeps it bound to the container. In\n" +
+		"that case you're asked whether to stop the container instead; with\n" +
+		"--force, pass --container explicitly to stop it (the default\n" +
+		"without --container is still to kill the process, unchanged).",
+	Example: "  localpilot kill 3000                        # kill by port, with confirmation\n" +
+		"  localpilot kill 12345 --force               # kill by PID, no confirmation\n" +
+		"  localpilot kill 3000 --force --json\n" +
+		"  localpilot kill 3000 --force --container    # stop the owning container instead",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if killJSON && !killForce {
@@ -302,6 +336,20 @@ var killCmd = &cobra.Command{
 				return err
 			}
 			if binding.InUse && binding.Process != nil {
+				if resolveContainerStop(binding.Container, binding.Process, killForce, killContainer) {
+					if err := a.StopContainer(ctx, binding.Container.ID); err != nil {
+						return fmt.Errorf("failed to stop container %s: %w", binding.Container.Name, err)
+					}
+					if killJSON {
+						return printJSON(cmd.OutOrStdout(), terminationResult{Port: &port, Terminated: true, Container: binding.Container.Name, ContainerStopped: true})
+					}
+					fmt.Printf("Container %s (port %d) stopped.\n", binding.Container.Name, port)
+					return nil
+				}
+				if binding.Container != nil && killForce {
+					output.PrintForceKillContainerWarning(binding.Container)
+				}
+
 				if !killForce {
 					output.PrintKillConfirmation(binding)
 					if !confirm() {
@@ -332,6 +380,20 @@ var killCmd = &cobra.Command{
 		}
 		project := agent.DetectProject(proc.Cwd)
 
+		if resolveContainerStop(proc.Container, proc, killForce, killContainer) {
+			if err := a.StopContainer(ctx, proc.Container.ID); err != nil {
+				return fmt.Errorf("failed to stop container %s: %w", proc.Container.Name, err)
+			}
+			if killJSON {
+				return printJSON(cmd.OutOrStdout(), terminationResult{Terminated: true, Container: proc.Container.Name, ContainerStopped: true})
+			}
+			fmt.Printf("Container %s stopped.\n", proc.Container.Name)
+			return nil
+		}
+		if proc.Container != nil && killForce {
+			output.PrintForceKillContainerWarning(proc.Container)
+		}
+
 		if !killForce {
 			output.PrintKillByPIDConfirmation(proc, project)
 			if !confirm() {
@@ -353,6 +415,7 @@ var killCmd = &cobra.Command{
 
 var freeForce bool
 var freeJSON bool
+var freeContainer bool
 
 var freeCmd = &cobra.Command{
 	Use:   "free <PORT>",
@@ -365,9 +428,16 @@ var freeCmd = &cobra.Command{
 		"never be answered, so --force is required for non-interactive use\n" +
 		"(scripts, cron, CI, agents).\n\n" +
 		"--json requires --force: an interactive confirmation prompt would\n" +
-		"otherwise corrupt stdout for a script expecting JSON.",
-	Example: "  localpilot free 3000            # a dev server left the port bound; free it\n" +
-		"  localpilot free 3000 --force --json",
+		"otherwise corrupt stdout for a script expecting JSON.\n\n" +
+		"If the port is owned by a Docker container, killing the local\n" +
+		"process (docker-proxy, or Docker Desktop's backend process) usually\n" +
+		"won't free the port — Docker keeps it bound to the container. In\n" +
+		"that case you're asked whether to stop the container instead; with\n" +
+		"--force, pass --container explicitly to stop it (the default\n" +
+		"without --container is still to kill the process, unchanged).",
+	Example: "  localpilot free 3000                        # a dev server left the port bound; free it\n" +
+		"  localpilot free 3000 --force --json\n" +
+		"  localpilot free 3000 --force --container    # stop the owning container instead",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if freeJSON && !freeForce {
@@ -400,6 +470,20 @@ var freeCmd = &cobra.Command{
 			}
 			fmt.Printf("Port %d is not in use.\n", port)
 			return nil
+		}
+
+		if resolveContainerStop(binding.Container, binding.Process, freeForce, freeContainer) {
+			if err := a.StopContainer(ctx, binding.Container.ID); err != nil {
+				return fmt.Errorf("failed to stop container %s: %w", binding.Container.Name, err)
+			}
+			if freeJSON {
+				return printJSON(cmd.OutOrStdout(), terminationResult{Port: &port, Terminated: true, Container: binding.Container.Name, ContainerStopped: true})
+			}
+			fmt.Printf("Container %s (port %d) stopped.\n", binding.Container.Name, port)
+			return nil
+		}
+		if binding.Container != nil && freeForce {
+			output.PrintForceKillContainerWarning(binding.Container)
 		}
 
 		if !freeForce {
@@ -560,8 +644,10 @@ func init() {
 	listCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
 	killCmd.Flags().BoolVar(&killForce, "force", false, "Skip confirmation and force kill")
 	killCmd.Flags().BoolVar(&killJSON, "json", false, "Output as JSON (requires --force)")
+	killCmd.Flags().BoolVar(&killContainer, "container", false, "With --force, stop the owning Docker container instead of killing the process")
 	freeCmd.Flags().BoolVar(&freeForce, "force", false, "Skip confirmation and force kill")
 	freeCmd.Flags().BoolVar(&freeJSON, "json", false, "Output as JSON (requires --force)")
+	freeCmd.Flags().BoolVar(&freeContainer, "container", false, "With --force, stop the owning Docker container instead of killing the process")
 	watchCmd.Flags().DurationVar(&watchInterval, "interval", time.Second, "Refresh interval (e.g. 1s, 500ms)")
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "Output as JSON")
 	listCmd.Flags().StringVar(&listRange, "range", "", "Only show ports within <start>-<end>, e.g. 3000-4000")

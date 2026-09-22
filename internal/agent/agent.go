@@ -75,6 +75,14 @@ func (a *Agent) Kill(ctx context.Context, pid int32, force bool) error {
 	return a.provider.KillProcess(ctx, pid, force)
 }
 
+// StopContainer stops the Docker container with the given ID. Unlike
+// Kill, this always cleanly stops the container rather than force-killing
+// it, mirroring `docker stop`'s own semantics (SIGTERM, then SIGKILL after
+// a grace period).
+func (a *Agent) StopContainer(ctx context.Context, id string) error {
+	return platform.StopContainer(ctx, id)
+}
+
 // DetectProject exposes project detection for a working directory.
 func DetectProject(cwd string) *models.Project {
 	return platform.DetectProject(cwd)
