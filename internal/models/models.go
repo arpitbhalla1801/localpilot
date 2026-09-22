@@ -15,15 +15,27 @@ type Process struct {
 	StartTime   time.Time         `json:"startTime,omitempty"`
 	Environment map[string]string `json:"environment,omitempty"`
 	OpenPorts   []int             `json:"openPorts,omitempty"`
+	Container   *Container        `json:"container,omitempty"`
 }
 
 // Port represents a network port binding.
 type Port struct {
-	Number   int      `json:"number"`
-	Protocol string   `json:"protocol"`
-	Address  string   `json:"address"`
-	PID      int32    `json:"pid,omitempty"`
-	Process  *Process `json:"process,omitempty"`
+	Number    int        `json:"number"`
+	Protocol  string     `json:"protocol"`
+	Address   string     `json:"address"`
+	PID       int32      `json:"pid,omitempty"`
+	Process   *Process   `json:"process,omitempty"`
+	Container *Container `json:"container,omitempty"`
+}
+
+// Container identifies the Docker container publishing a port, resolved
+// from `docker ps` when the port's owning process is docker-proxy (Linux)
+// or a platform equivalent (e.g. Docker Desktop's VM-based proxying on
+// macOS/Windows).
+type Container struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Image string `json:"image"`
 }
 
 // Project represents a detected development project.
@@ -46,10 +58,11 @@ type Service struct {
 
 // PortBinding summarizes a port with its owning process and project context.
 type PortBinding struct {
-	Port    int      `json:"port"`
-	Process *Process `json:"process,omitempty"`
-	Project *Project `json:"project,omitempty"`
-	InUse   bool     `json:"inUse"`
+	Port      int        `json:"port"`
+	Process   *Process   `json:"process,omitempty"`
+	Project   *Project   `json:"project,omitempty"`
+	Container *Container `json:"container,omitempty"`
+	InUse     bool       `json:"inUse"`
 }
 
 // Conflict describes a single detected port conflict or misconfiguration,

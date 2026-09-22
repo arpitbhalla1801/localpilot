@@ -149,6 +149,22 @@ Notes for scripting:
 - `kill --json` and `free --json` require `--force`: a confirmation prompt on stdout would otherwise corrupt output a script expects to be JSON.
 - `kill`/`free` share a result shape: `{"pid": <int>, "port": <int, omitted if killed by PID>, "terminated": <bool>, "cancelled": <bool, omitted if false>}`.
 
+## Docker Awareness
+
+When a port is actually published by a Docker container, `port`, `inspect`, and `list` resolve it to the container's name and image — instead of just showing `docker-proxy` (Linux) or Docker Desktop's backend process (macOS/Windows), which tells you nothing about which container is actually involved:
+
+```
+$ localpilot port 18080
+...
+Docker Container
+────────────────────────────────────
+Name            my-app
+Image           nginx:alpine
+ID              2fd6024edf64
+```
+
+This is read-only detection: LocalPilot doesn't manage containers, only identifies them (killing/stopping the owning container is a separate, tracked feature). It works automatically whenever the `docker` CLI can reach a daemon, and no-ops silently otherwise — Docker isn't required to use LocalPilot.
+
 ## Shell Completion
 
 LocalPilot generates completion scripts for bash, zsh, fish, and PowerShell via `localpilot completion <shell>`.
@@ -273,7 +289,7 @@ go build -o localpilot ./cmd/localpilot
 ## Roadmap
 
 - [x] v0.1 — Port Doctor (`port`, `inspect`, `kill`, `list`)
-- [ ] v0.2 — Docker integration, terminal dashboard, project detection
+- [x] v0.2 — Docker container resolution (read-only), terminal dashboard, project detection
 - [ ] v0.3 — Web dashboard, diagnostics, stale process detection
 - [x] v0.4 — Windows support added (WSL planned)
 

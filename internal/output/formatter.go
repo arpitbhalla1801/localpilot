@@ -123,6 +123,15 @@ func PrintPortDoctor(binding *models.PortBinding) {
 		fmt.Println(sanitize(shortenPath(proc.Cwd)))
 	}
 
+	if binding.Container != nil {
+		fmt.Println()
+		fmt.Println("Docker Container")
+		fmt.Println("────────────────────────────────────")
+		fmt.Printf("Name            %s\n", sanitize(binding.Container.Name))
+		fmt.Printf("Image           %s\n", sanitize(binding.Container.Image))
+		fmt.Printf("ID              %s\n", sanitize(binding.Container.ID))
+	}
+
 	if binding.Project != nil {
 		fmt.Println()
 		fmt.Println("Git Repository")
@@ -161,6 +170,12 @@ func PrintInspect(proc *models.Process, project *models.Project) {
 	fmt.Printf("CPU             %.1f%%\n", proc.CPUPercent)
 	fmt.Printf("Memory          %s\n", formatBytes(proc.MemoryBytes))
 	fmt.Printf("Started         %s\n", formatTime(proc.StartTime))
+
+	if proc.Container != nil {
+		fmt.Println()
+		fmt.Println("Docker Container")
+		fmt.Printf("  %s (%s)\n", sanitize(proc.Container.Name), sanitize(proc.Container.Image))
+	}
 
 	if !proc.StartTime.IsZero() {
 		fmt.Printf("Runtime         %s\n", formatDuration(time.Since(proc.StartTime)))
@@ -229,13 +244,14 @@ func PrintList(ports []models.Port) {
 	}
 
 	fmt.Println("LOCALPILOT")
-	fmt.Printf("%-20s %-12s %-8s %-8s %s\n", "ADDRESS", "PROCESS", "PORT", "PID", "STATUS")
-	fmt.Println(strings.Repeat("─", 60))
+	fmt.Printf("%-20s %-12s %-8s %-8s %-10s %s\n", "ADDRESS", "PROCESS", "PORT", "PID", "CONTAINER", "STATUS")
+	fmt.Println(strings.Repeat("─", 72))
 
 	for _, p := range ports {
 		name := "-"
 		pid := "-"
 		status := "● RUNNING"
+		container := "-"
 
 		if p.Process != nil {
 			name = sanitize(p.Process.Name)
@@ -248,8 +264,12 @@ func PrintList(ports []models.Port) {
 			pid = fmt.Sprintf("%d", p.PID)
 		}
 
+		if p.Container != nil {
+			container = sanitize(p.Container.Name)
+		}
+
 		addr := fmt.Sprintf("%s:%d", p.Address, p.Number)
-		fmt.Printf("%-20s %-12s %-8s %-8s %s\n", truncate(addr, 20), truncate(name, 12), fmt.Sprintf("%d", p.Number), pid, status)
+		fmt.Printf("%-20s %-12s %-8s %-8s %-10s %s\n", truncate(addr, 20), truncate(name, 12), fmt.Sprintf("%d", p.Number), pid, truncate(container, 10), status)
 	}
 }
 
