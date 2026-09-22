@@ -279,6 +279,35 @@ func PrintKillByPIDConfirmation(proc *models.Process, project *models.Project) {
 	}
 }
 
+// PrintDoctor displays the results of a port-conflict scan.
+func PrintDoctor(conflicts []models.Conflict) {
+	fmt.Println("LOCALPILOT DOCTOR")
+	fmt.Println("────────────────────────────────────")
+
+	if len(conflicts) == 0 {
+		fmt.Println("No port conflicts found.")
+		return
+	}
+
+	for i, c := range conflicts {
+		if i > 0 {
+			fmt.Println()
+		}
+		fmt.Printf("⚠ Port %d: %s\n", c.Port, sanitize(c.Message))
+		for _, p := range c.Ports {
+			name := "-"
+			pid := "-"
+			if p.Process != nil {
+				name = sanitize(p.Process.Name)
+				pid = fmt.Sprintf("%d", p.Process.PID)
+			} else if p.PID > 0 {
+				pid = fmt.Sprintf("%d", p.PID)
+			}
+			fmt.Printf("  %s:%d  %-12s  PID %s\n", p.Address, p.Number, name, pid)
+		}
+	}
+}
+
 // PrintDashboard is the default view when running `localpilot`.
 func PrintDashboard(ports []models.Port) {
 	fmt.Println()

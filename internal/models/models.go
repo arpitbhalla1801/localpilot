@@ -51,3 +51,12 @@ type PortBinding struct {
 	Project *Project `json:"project,omitempty"`
 	InUse   bool     `json:"inUse"`
 }
+
+// Conflict describes a single detected port conflict or misconfiguration,
+// as produced by `localpilot doctor`.
+type Conflict struct {
+	Kind    string `json:"kind"`
+	Port    int    `json:"port"`
+	Message string `json:"message"`
+	Ports   []Port `json:"ports,omitempty"`
+}

@@ -106,6 +106,7 @@ func init() {
 	rootCmd.AddCommand(killCmd)
 	rootCmd.AddCommand(freeCmd)
 	rootCmd.AddCommand(watchCmd)
+	rootCmd.AddCommand(doctorCmd)
 }
 
 var listJSON bool
@@ -512,6 +513,48 @@ var watchCmd = &cobra.Command{
 	},
 }
 
+var doctorJSON bool
+
+var doctorCmd = &cobra.Command{
+	Use:   "doctor",
+	Short: "Scan for port conflicts and misconfigurations",
+	Long: "Scan listening ports for port-related problems:\n\n" +
+		"  - multiple processes bound to the same port\n" +
+		"  - different projects configured (via .env/package.json) for the\n" +
+		"    same default port\n\n" +
+		"Scoped to port conflicts only; not a general system health check.",
+	Example: "  localpilot doctor\n" +
+		"  localpilot doctor --json | jq '.[].message'",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		a, err := agent.New()
+		if err != nil {
+			return err
+		}
+
+		ports, err := a.ListPorts(context.Background())
+		if err != nil {
+			return err
+		}
+
+		conflicts := agent.DetectConflicts(filterPorts(ports))
+
+		if doctorJSON {
+			return printJSON(cmd.OutOrStdout(), nonNilConflicts(conflicts))
+		}
+		output.PrintDoctor(conflicts)
+		return nil
+	},
+}
+
+// nonNilConflicts mirrors nonNilPorts: an empty result marshals to "[]"
+// rather than "null" so a script piping into jq gets an iterable array.
+func nonNilConflicts(conflicts []models.Conflict) []models.Conflict {
+	if conflicts == nil {
+		return []models.Conflict{}
+	}
+	return conflicts
+}
+
 func init() {
 	rootCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
 	listCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
@@ -524,6 +567,7 @@ func init() {
 	listCmd.Flags().StringVar(&listRange, "range", "", "Only show ports within <start>-<end>, e.g. 3000-4000")
 	portCmd.Flags().BoolVar(&portJSON, "json", false, "Output as JSON")
 	inspectCmd.Flags().BoolVar(&inspectJSON, "json", false, "Output as JSON")
+	doctorCmd.Flags().BoolVar(&doctorJSON, "json", false, "Output as JSON")
 }
 
 // printJSON writes to w rather than os.Stdout directly so JSON output is

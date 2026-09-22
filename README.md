@@ -108,6 +108,9 @@ localpilot list --range 3000-4000
 # Watch a port or process for changes (Ctrl+C to exit)
 localpilot watch 3000
 localpilot watch 12345 --interval 500ms
+
+# Scan for port conflicts and misconfigurations
+localpilot doctor
 ```
 
 ## Commands
@@ -125,10 +128,11 @@ localpilot watch 12345 --interval 500ms
 | `localpilot free --force` | Skip confirmation and force free |
 | `localpilot watch <PID\|PORT>` | Live-updating view of a port or process, until Ctrl+C |
 | `localpilot watch --interval <duration>` | Set the refresh interval (default `1s`) |
+| `localpilot doctor` | Scan for port conflicts (multiple processes on one port, or projects configured for the same default port) |
 
 ## Scripting with `--json`
 
-`list`, `port`, `inspect`, `kill`, and `free` all support `--json` for piping into `jq` or other tooling:
+`list`, `port`, `inspect`, `kill`, `free`, and `doctor` all support `--json` for piping into `jq` or other tooling:
 
 ```bash
 localpilot list --json | jq '.[].port'
@@ -136,6 +140,7 @@ localpilot port 3000 --json | jq '.process.pid'
 localpilot inspect 12345 --json | jq '.process.name'
 localpilot kill 3000 --force --json | jq '.terminated'
 localpilot free 3000 --force --json | jq '.terminated'
+localpilot doctor --json | jq '.[].message'
 ```
 
 Notes for scripting:
