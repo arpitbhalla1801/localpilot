@@ -178,6 +178,22 @@ localpilot free 3000 --force               # multiple containers running: refuse
 localpilot free 3000 --force --container   # multiple containers running: stops just this one container
 ```
 
+## WSL Awareness (Windows)
+
+On Windows, a port published from inside WSL shows up locally as owned by `wslrelay.exe` — a single relay process shared across every running distro, telling you nothing about which one (or which process inside it) is actually involved. `port`, `inspect`, and `list` resolve it to the real distro, PID, and process name instead:
+
+```
+$ localpilot port 45031
+...
+WSL Process
+────────────────────────────────────
+Distro          Ubuntu
+PID             1234
+Name            node
+```
+
+Detection works automatically whenever `wsl.exe` can list running distros, and no-ops silently otherwise. This is read-only detection: stopping the process is out of scope (unlike Docker's `--container`, since a WSL process isn't a separate lifecycle you'd want `kill`/`free` to manage — kill it from inside the distro, or by the resolved PID via `wsl -d <distro> -- kill <PID>`).
+
 ## Shell Completion
 
 LocalPilot generates completion scripts for bash, zsh, fish, and PowerShell via `localpilot completion <shell>`.
@@ -270,7 +286,7 @@ internal/
   cli/                   Cobra command definitions
   models/                Core data types (Process, Port, Project)
   output/                Terminal formatting
-  platform/              OS-specific adapters (Linux, macOS)
+  platform/              OS-specific adapters (Linux, macOS, Windows)
   security/              Environment variable masking
 ```
 
@@ -283,7 +299,7 @@ Platform adapters hide OS-specific process and network inspection behind a commo
 | Linux    | Supported |
 | macOS    | Supported |
 | Windows  | Supported |
-| WSL      | Planned |
+| WSL      | Supported (running natively inside WSL just uses the Linux support above; from Windows, `wslrelay.exe`-owned ports are resolved to their real WSL distro/process — see WSL Awareness) |
 
 ## Security
 
@@ -304,7 +320,7 @@ go build -o localpilot ./cmd/localpilot
 - [x] v0.1 — Port Doctor (`port`, `inspect`, `kill`, `list`)
 - [x] v0.2 — Docker container resolution (read-only), terminal dashboard, project detection
 - [ ] v0.3 — Web dashboard, diagnostics, stale process detection
-- [x] v0.4 — Windows support added (WSL planned)
+- [x] v0.4 — Windows support added, including WSL port resolution
 
 ## License
 

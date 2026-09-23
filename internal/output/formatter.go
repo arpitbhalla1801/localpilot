@@ -132,6 +132,15 @@ func PrintPortDoctor(binding *models.PortBinding) {
 		fmt.Printf("ID              %s\n", sanitize(binding.Container.ID))
 	}
 
+	if binding.WSL != nil {
+		fmt.Println()
+		fmt.Println("WSL Process")
+		fmt.Println("────────────────────────────────────")
+		fmt.Printf("Distro          %s\n", sanitize(binding.WSL.Distro))
+		fmt.Printf("PID             %d\n", binding.WSL.PID)
+		fmt.Printf("Name            %s\n", sanitize(binding.WSL.Name))
+	}
+
 	if binding.Project != nil {
 		fmt.Println()
 		fmt.Println("Git Repository")
@@ -175,6 +184,12 @@ func PrintInspect(proc *models.Process, project *models.Project) {
 		fmt.Println()
 		fmt.Println("Docker Container")
 		fmt.Printf("  %s (%s)\n", sanitize(proc.Container.Name), sanitize(proc.Container.Image))
+	}
+
+	if proc.WSL != nil {
+		fmt.Println()
+		fmt.Println("WSL Process")
+		fmt.Printf("  %s (PID %d in %s)\n", sanitize(proc.WSL.Name), proc.WSL.PID, sanitize(proc.WSL.Distro))
 	}
 
 	if !proc.StartTime.IsZero() {
@@ -266,6 +281,8 @@ func PrintList(ports []models.Port) {
 
 		if p.Container != nil {
 			container = sanitize(p.Container.Name)
+		} else if p.WSL != nil {
+			container = "wsl:" + sanitize(p.WSL.Distro)
 		}
 
 		addr := fmt.Sprintf("%s:%d", p.Address, p.Number)
@@ -387,6 +404,10 @@ func PrintDashboard(ports []models.Port) {
 				// port/inspect/list; the dashboard was the one place
 				// still showing the raw process name).
 				processName = sanitize(p.Container.Name)
+			} else if p.WSL != nil {
+				// Same idea for a port published from inside WSL: Windows
+				// only sees wslrelay.exe, shared across every distro.
+				processName = sanitize(p.WSL.Name)
 			}
 
 			portStr := fmt.Sprintf("%s:%d", p.Address, p.Number)
