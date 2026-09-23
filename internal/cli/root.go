@@ -268,23 +268,53 @@ type terminationResult struct {
 // proxying it (killing docker-proxy or Docker Desktop's backend process
 // alone typically doesn't free the port — Docker keeps it bound to the
 // container). container may be nil, meaning the port/process isn't
-// container-owned, in which case this always returns false.
+// container-owned, in which case this always returns (false, false).
 //
-// In --force mode this is never guessed from context: the caller must
-// pass --container explicitly, since there's no one to prompt. Otherwise
-// the user is asked directly.
-func resolveContainerStop(container *models.Container, proc *models.Process, force, containerFlag bool) bool {
+// soleContainer reports whether this is the only container currently
+// running. When it is, the local process can't be shared with anything
+// else — Linux's docker-proxy is one-per-port anyway, and even Docker
+// Desktop's single shared backend process has nothing else to affect — so
+// killing it is exactly as safe as it was before container-awareness
+// existed, and no extra ceremony is needed.
+//
+// When other containers are also running, that safety guarantee is gone:
+// Docker Desktop's backend process is shared across every container's
+// port mappings, so killing it could take down unrelated containers, not
+// just the one at hand. Interactively, the user is asked which action to
+// take. In --force mode there's no one to ask, so this is never guessed:
+// blocked is returned true unless --container was passed explicitly,
+// and the caller must refuse to proceed rather than silently risk it.
+func resolveContainerStop(container *models.Container, proc *models.Process, force, containerFlag, soleContainer bool) (stop, blocked bool) {
 	if container == nil {
-		return false
+		return false, false
+	}
+	if containerFlag {
+		return true, false
+	}
+	if soleContainer {
+		return false, false
 	}
 	if force {
-		return containerFlag
+		return false, true
 	}
 	output.PrintContainerConflict(container, proc)
+	fmt.Print("Other containers are also running, so killing the process risks affecting them too.\n")
 	fmt.Print("Stop the container instead of killing the process? [Y/n] ")
 	var response string
 	fmt.Scanln(&response)
-	return response == "" || response == "y" || response == "Y"
+	return response == "" || response == "y" || response == "Y", false
+}
+
+// soleRunningContainer reports whether c is the only container currently
+// running, per RunningContainerCount. If the count can't be determined
+// (Docker unreachable), it conservatively reports false so callers treat
+// the situation as if other containers might exist.
+func soleRunningContainer(ctx context.Context, a *agent.Agent, c *models.Container) bool {
+	if c == nil {
+		return true
+	}
+	n, ok := a.RunningContainerCount(ctx)
+	return ok && n <= 1
 }
 
 var killCmd = &cobra.Command{
@@ -336,7 +366,11 @@ var killCmd = &cobra.Command{
 				return err
 			}
 			if binding.InUse && binding.Process != nil {
-				if resolveContainerStop(binding.Container, binding.Process, killForce, killContainer) {
+				stop, blocked := resolveContainerStop(binding.Container, binding.Process, killForce, killContainer, soleRunningContainer(ctx, a, binding.Container))
+				if blocked {
+					return fmt.Errorf("port %d is owned by Docker container %q, and other containers are also running: pass --container to stop it, since killing the process risks affecting them too", port, binding.Container.Name)
+				}
+				if stop {
 					if err := a.StopContainer(ctx, binding.Container.ID); err != nil {
 						return fmt.Errorf("failed to stop container %s: %w", binding.Container.Name, err)
 					}
@@ -345,9 +379,6 @@ var killCmd = &cobra.Command{
 					}
 					fmt.Printf("Container %s (port %d) stopped.\n", binding.Container.Name, port)
 					return nil
-				}
-				if binding.Container != nil && killForce {
-					output.PrintForceKillContainerWarning(binding.Container)
 				}
 
 				if !killForce {
@@ -380,7 +411,11 @@ var killCmd = &cobra.Command{
 		}
 		project := agent.DetectProject(proc.Cwd)
 
-		if resolveContainerStop(proc.Container, proc, killForce, killContainer) {
+		stop, blocked := resolveContainerStop(proc.Container, proc, killForce, killContainer, soleRunningContainer(ctx, a, proc.Container))
+		if blocked {
+			return fmt.Errorf("process %d is owned by Docker container %q, and other containers are also running: pass --container to stop it, since killing the process risks affecting them too", pid, proc.Container.Name)
+		}
+		if stop {
 			if err := a.StopContainer(ctx, proc.Container.ID); err != nil {
 				return fmt.Errorf("failed to stop container %s: %w", proc.Container.Name, err)
 			}
@@ -389,9 +424,6 @@ var killCmd = &cobra.Command{
 			}
 			fmt.Printf("Container %s stopped.\n", proc.Container.Name)
 			return nil
-		}
-		if proc.Container != nil && killForce {
-			output.PrintForceKillContainerWarning(proc.Container)
 		}
 
 		if !killForce {
@@ -472,7 +504,11 @@ var freeCmd = &cobra.Command{
 			return nil
 		}
 
-		if resolveContainerStop(binding.Container, binding.Process, freeForce, freeContainer) {
+		stop, blocked := resolveContainerStop(binding.Container, binding.Process, freeForce, freeContainer, soleRunningContainer(ctx, a, binding.Container))
+		if blocked {
+			return fmt.Errorf("port %d is owned by Docker container %q, and other containers are also running: pass --container to stop it, since killing the process risks affecting them too", port, binding.Container.Name)
+		}
+		if stop {
 			if err := a.StopContainer(ctx, binding.Container.ID); err != nil {
 				return fmt.Errorf("failed to stop container %s: %w", binding.Container.Name, err)
 			}
@@ -481,9 +517,6 @@ var freeCmd = &cobra.Command{
 			}
 			fmt.Printf("Container %s (port %d) stopped.\n", binding.Container.Name, port)
 			return nil
-		}
-		if binding.Container != nil && freeForce {
-			output.PrintForceKillContainerWarning(binding.Container)
 		}
 
 		if !freeForce {

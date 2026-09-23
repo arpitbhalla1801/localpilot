@@ -167,14 +167,16 @@ ID              2fd6024edf64
 
 Detection works automatically whenever the `docker` CLI can reach a daemon, and no-ops silently otherwise — Docker isn't required to use LocalPilot.
 
-**Stopping a container-owned port:** `kill`/`free` still kill the local process by default (unchanged behavior). If that process is Docker-owned, killing it usually won't actually free the port — Docker keeps it bound to the container. Interactively, you're asked whether to stop the container instead (recommended, and the default answer). Non-interactively (`--force`), pass `--container` explicitly to stop the container — this is never guessed, since there's no one to prompt:
+**Stopping a container-owned port:** on Docker Desktop (macOS/Windows), the process behind a published port is often a single backend process **shared across every container**, not one per container the way Linux's `docker-proxy` is. Killing it can free the port, but it can also disrupt unrelated containers — so `kill`/`free` behave differently depending on whether anything else is at stake:
+
+- **Only one container is running:** nothing else could be affected either way, so `kill`/`free` behave exactly as they always have — no extra prompts or flags needed, `--force` alone kills the process.
+- **Other containers are also running:** killing the process is no longer guaranteed safe. Interactively, you're asked whether to stop the container instead (recommended, and the default answer). Non-interactively (`--force`), this is never guessed — you must pass `--container` explicitly, or the command refuses to proceed:
 
 ```bash
-localpilot free 3000 --force --container   # stops the container, doesn't touch the process
-localpilot free 3000 --force               # still kills the process only (unchanged default)
+localpilot free 3000 --force               # only one container running: kills the process, as always
+localpilot free 3000 --force               # multiple containers running: refuses — ambiguous, may affect others
+localpilot free 3000 --force --container   # multiple containers running: stops just this one container
 ```
-
-> **Note:** on Docker Desktop (macOS/Windows), the process behind a published port is often a single backend process **shared across every container**, not one per container. Force-killing it without `--container` can disrupt unrelated containers, not just the port you're trying to free — LocalPilot warns about this on stderr when it happens. Prefer `--container` on these platforms.
 
 ## Shell Completion
 

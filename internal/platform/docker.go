@@ -82,6 +82,27 @@ func containerFromPSEntry(entry dockerPSEntry) *models.Container {
 	}
 }
 
+// RunningContainerCount reports how many containers are currently running,
+// regardless of whether they publish any ports, or ok=false if Docker
+// isn't reachable. Callers use this to tell whether killing a
+// container-shared local process (Docker Desktop's single backend process
+// spans every container, unlike Linux's one-docker-proxy-per-port) could
+// affect containers beyond the one currently in view.
+func RunningContainerCount(ctx context.Context) (count int, ok bool) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return 0, false
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dockerLookupTimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "docker", "ps", "-q").Output()
+	if err != nil {
+		return 0, false
+	}
+	return len(strings.Fields(string(out))), true
+}
+
 // StopContainer stops a running container by ID via `docker stop`.
 func StopContainer(ctx context.Context, id string) error {
 	out, err := exec.CommandContext(ctx, "docker", "stop", id).CombinedOutput()

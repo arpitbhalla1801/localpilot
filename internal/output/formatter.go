@@ -299,17 +299,6 @@ func PrintContainerConflict(container *models.Container, proc *models.Process) {
 	fmt.Println("Killing that process alone typically won't free the port — Docker keeps it bound to the container.")
 }
 
-// PrintForceKillContainerWarning warns, on stderr so it never corrupts
-// --json output on stdout, that a --force kill/free is about to terminate
-// a container-owning process without stopping the container itself. On
-// Docker Desktop (macOS/Windows) this process is often a single process
-// shared across every container's port mappings, not one per container —
-// killing it can disrupt other, unrelated containers, not just the port
-// being freed here.
-func PrintForceKillContainerWarning(container *models.Container) {
-	fmt.Fprintf(os.Stderr, "Warning: port is published by Docker container %q (%s); killing the process won't stop it, and may affect other containers sharing the same proxy process. Pass --container to stop it instead.\n", sanitize(container.Name), sanitize(container.Image))
-}
-
 // PrintKillByPIDConfirmation shows PID kill confirmation.
 func PrintKillByPIDConfirmation(proc *models.Process, project *models.Project) {
 	fmt.Printf("About to terminate:\n")

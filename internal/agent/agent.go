@@ -83,6 +83,12 @@ func (a *Agent) StopContainer(ctx context.Context, id string) error {
 	return platform.StopContainer(ctx, id)
 }
 
+// RunningContainerCount reports how many Docker containers are currently
+// running, or ok=false if Docker isn't reachable.
+func (a *Agent) RunningContainerCount(ctx context.Context) (count int, ok bool) {
+	return platform.RunningContainerCount(ctx)
+}
+
 // DetectProject exposes project detection for a working directory.
 func DetectProject(cwd string) *models.Project {
 	return platform.DetectProject(cwd)
