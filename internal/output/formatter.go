@@ -275,15 +275,15 @@ func PrintList(ports []models.Port) {
 
 // PrintKillConfirmation shows what will be killed.
 func PrintKillConfirmation(binding *models.PortBinding) {
-	if binding.Process != nil {
-		fmt.Printf("Port %d is used by:\n", binding.Port)
-		fmt.Printf("  %s\n", sanitize(binding.Process.Name))
-		fmt.Printf("  PID: %d\n", binding.Process.PID)
-		if binding.Project != nil {
-			fmt.Printf("  Project: %s\n", sanitize(binding.Project.Name))
-		}
-	} else {
-		fmt.Printf("Process PID %d\n", binding.Process.PID)
+	if binding.Process == nil {
+		fmt.Printf("Port %d is in use, but no owning process could be identified.\n", binding.Port)
+		return
+	}
+	fmt.Printf("Port %d is used by:\n", binding.Port)
+	fmt.Printf("  %s\n", sanitize(binding.Process.Name))
+	fmt.Printf("  PID: %d\n", binding.Process.PID)
+	if binding.Project != nil {
+		fmt.Printf("  Project: %s\n", sanitize(binding.Project.Name))
 	}
 }
 
@@ -297,6 +297,13 @@ func PrintContainerConflict(container *models.Container, proc *models.Process) {
 	}
 	fmt.Println(".")
 	fmt.Println("Killing that process alone typically won't free the port — Docker keeps it bound to the container.")
+}
+
+// PrintContainerStopConfirmation shows what will be stopped when the user
+// has explicitly requested stopping a container (--container) rather than
+// killing the underlying process.
+func PrintContainerStopConfirmation(container *models.Container) {
+	fmt.Printf("About to stop Docker container %q (%s).\n", sanitize(container.Name), sanitize(container.Image))
 }
 
 // PrintKillByPIDConfirmation shows PID kill confirmation.
@@ -370,6 +377,16 @@ func PrintDashboard(ports []models.Port) {
 				if !p.Process.StartTime.IsZero() && time.Since(p.Process.StartTime) > 48*time.Hour && !IsSystemOrBackgroundProcess(processName) {
 					status = "⚠ Stale"
 				}
+			}
+			if p.Container != nil {
+				// The local process behind a container-published port is
+				// typically docker-proxy or Docker Desktop's shared
+				// backend — neither tells the user anything about which
+				// container is actually involved, so show the container
+				// name instead (same resolution #24 added to
+				// port/inspect/list; the dashboard was the one place
+				// still showing the raw process name).
+				processName = sanitize(p.Container.Name)
 			}
 
 			portStr := fmt.Sprintf("%s:%d", p.Address, p.Number)

@@ -17,8 +17,7 @@ func TestResolveWatchTarget_Port(t *testing.T) {
 	port := freePort(t)
 
 	helper := startListenerHelper(t, port)
-	defer helper.stop()
-	helper.waitListening(t)
+	helper.WaitListening(t)
 
 	gotPort, gotPID, isPort, err := resolveWatchTarget(context.Background(), a, itoa(port))
 	if err != nil {
@@ -79,8 +78,7 @@ func TestRunWatch_TicksUntilCancelled(t *testing.T) {
 
 	port := freePort(t)
 	helper := startListenerHelper(t, port)
-	defer helper.stop()
-	helper.waitListening(t)
+	helper.WaitListening(t)
 
 	watchInterval = 20 * time.Millisecond
 	defer func() { watchInterval = time.Second }()

@@ -98,3 +98,48 @@ func TestMaskEnvironment_ValueShapeWithoutSensitiveName(t *testing.T) {
 		t.Errorf("NORMAL_VALUE should not be masked, got %s", masked["NORMAL_VALUE"])
 	}
 }
+
+// TestHasSensitiveValueShape_CaseInsensitive is the regression test for
+// #39: the value-shape check used to be case-sensitive, so a Stripe key
+// or AWS key ID whose case had been altered (e.g. by a shell or wrapper
+// that uppercases exported values) slipped through unredacted — the only
+// safety net for these, since their variable *names* don't reliably
+// contain a sensitive-looking word like "key" or "secret".
+func TestHasSensitiveValueShape_CaseInsensitive(t *testing.T) {
+	tests := []struct {
+		value string
+		want  bool
+	}{
+		{"sk_live_abc123", true},
+		{"SK_LIVE_abc123", true},
+		{"Sk_Live_abc123", true},
+		{"sk_test_abc123", true},
+		{"SK_TEST_ABC123", true},
+		{"AKIAIOSFODNN7EXAMPLE", true},
+		{"akiaiosfodnn7example", true},
+		{"not-a-secret", false},
+	}
+	for _, tt := range tests {
+		if got := hasSensitiveValueShape(tt.value); got != tt.want {
+			t.Errorf("hasSensitiveValueShape(%q) = %v, want %v", tt.value, got, tt.want)
+		}
+	}
+}
+
+func TestMaskEnvironment_ValueShapeCaseVariants(t *testing.T) {
+	// Variable names deliberately avoid every word in sensitivePatterns
+	// (key, secret, token, id is fine, etc.) so these can only be caught
+	// by hasSensitiveValueShape, isolating the case-sensitivity fix from
+	// isSensitive's separate, already-case-insensitive name matching.
+	env := map[string]string{
+		"X_STRIPE_ID": "SK_LIVE_leaked123",
+		"X_AWS_ID":    "akiaiosfodnn7example",
+	}
+	masked := MaskEnvironment(env)
+	if masked["X_STRIPE_ID"] != "********" {
+		t.Errorf("X_STRIPE_ID with uppercase SK_LIVE_ value should be masked, got %s", masked["X_STRIPE_ID"])
+	}
+	if masked["X_AWS_ID"] != "********" {
+		t.Errorf("X_AWS_ID with lowercase akia value should be masked, got %s", masked["X_AWS_ID"])
+	}
+}

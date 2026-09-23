@@ -270,6 +270,12 @@ type terminationResult struct {
 // container). container may be nil, meaning the port/process isn't
 // container-owned, in which case this always returns (false, false).
 //
+// containerFlag (--container) means the user has explicitly chosen to
+// stop the container. Like every other termination path in kill/free,
+// that's only carried out without confirmation when force is also true;
+// otherwise the user is shown what's about to be stopped and asked to
+// confirm, exactly as an ordinary kill would.
+//
 // soleContainer reports whether this is the only container currently
 // running. When it is, the local process can't be shared with anything
 // else — Linux's docker-proxy is one-per-port anyway, and even Docker
@@ -280,16 +286,21 @@ type terminationResult struct {
 // When other containers are also running, that safety guarantee is gone:
 // Docker Desktop's backend process is shared across every container's
 // port mappings, so killing it could take down unrelated containers, not
-// just the one at hand. Interactively, the user is asked which action to
-// take. In --force mode there's no one to ask, so this is never guessed:
-// blocked is returned true unless --container was passed explicitly,
-// and the caller must refuse to proceed rather than silently risk it.
+// just the one at hand. Interactively (and --container not given), the
+// user is asked which action to take. In --force mode there's no one to
+// ask, so this is never guessed: blocked is returned true unless
+// --container was passed explicitly, and the caller must refuse to
+// proceed rather than silently risk it.
 func resolveContainerStop(container *models.Container, proc *models.Process, force, containerFlag, soleContainer bool) (stop, blocked bool) {
 	if container == nil {
 		return false, false
 	}
 	if containerFlag {
-		return true, false
+		if force {
+			return true, false
+		}
+		output.PrintContainerStopConfirmation(container)
+		return confirm(), false
 	}
 	if soleContainer {
 		return false, false

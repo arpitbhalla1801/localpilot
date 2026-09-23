@@ -64,8 +64,7 @@ func TestFreeCmd_JSON_KillsListener(t *testing.T) {
 
 	port := freePort(t)
 	helper := startListenerHelper(t, port)
-	defer helper.stop()
-	helper.waitListening(t)
+	helper.WaitListening(t)
 
 	binding, err := a.FindPort(context.Background(), port)
 	if err != nil || !binding.InUse {
@@ -98,7 +97,7 @@ func TestFreeCmd_JSON_KillsListener(t *testing.T) {
 		t.Errorf("PID = 0, want the terminated process's PID")
 	}
 
-	helper.waitExit(t, 5*time.Second)
+	helper.WaitExit(t, 5*time.Second)
 }
 
 func TestKillCmd_JSON_InvalidPID(t *testing.T) {

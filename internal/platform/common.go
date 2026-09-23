@@ -83,6 +83,21 @@ func parseEnviron(env []string) map[string]string {
 	return result
 }
 
+// isBoundSocket reports whether a connection represents something
+// actually reachable on the host: a TCP socket in LISTEN state, or a UDP
+// socket bound to a port. UDP is connectionless, so "listening" isn't a
+// meaningful concept for it — gopsutil (and most OSes) typically reports
+// UDP sockets with an empty/"NONE" status even while actively bound and
+// receiving, so filtering UDP on Status == "LISTEN" like TCP would
+// silently exclude every UDP-bound port (DNS resolvers, QUIC/HTTP3 dev
+// servers, etc.) from every port command.
+func isBoundSocket(c net.ConnectionStat) bool {
+	if c.Type == socketTypeUDP {
+		return c.Laddr.Port > 0
+	}
+	return c.Status == "LISTEN"
+}
+
 func listPortsForPID(ctx context.Context, pid int32) ([]int, error) {
 	conns, err := net.ConnectionsPidWithContext(ctx, "all", pid)
 	if err != nil {
@@ -93,7 +108,7 @@ func listPortsForPID(ctx context.Context, pid int32) ([]int, error) {
 	var ports []int
 	for _, c := range conns {
 		portNum := int(c.Laddr.Port)
-		if c.Status == "LISTEN" && portNum > 0 && !seen[portNum] {
+		if isBoundSocket(c) && portNum > 0 && !seen[portNum] {
 			seen[portNum] = true
 			ports = append(ports, portNum)
 		}
@@ -108,7 +123,7 @@ func findListeningPort(ctx context.Context, port int) (*models.PortBinding, erro
 	}
 
 	for _, c := range conns {
-		if c.Status != "LISTEN" || int(c.Laddr.Port) != port {
+		if !isBoundSocket(c) || int(c.Laddr.Port) != port {
 			continue
 		}
 
@@ -147,7 +162,7 @@ func listAllListeningPorts(ctx context.Context) ([]models.Port, error) {
 	var ports []models.Port
 
 	for _, c := range conns {
-		if c.Status != "LISTEN" || c.Laddr.Port == 0 {
+		if !isBoundSocket(c) || c.Laddr.Port == 0 {
 			continue
 		}
 
@@ -192,8 +207,19 @@ func killPID(ctx context.Context, pid int32, force bool) error {
 		return proc.KillWithContext(ctx)
 	}
 
-	if err := proc.TerminateWithContext(ctx); err != nil {
-		return proc.KillWithContext(ctx)
+	// Without --force, try a graceful terminate (SIGTERM) first, falling
+	// back to a forced kill (SIGKILL) if that fails — including for
+	// reasons unrelated to "the process ignored SIGTERM" (e.g. permission
+	// denied, the process already exited). If the fallback also fails,
+	// both errors are reported: the terminate error usually carries the
+	// more useful root cause, and discarding it (as this used to do)
+	// leaves only the less informative kill error to debug from.
+	terminateErr := proc.TerminateWithContext(ctx)
+	if terminateErr == nil {
+		return nil
+	}
+	if killErr := proc.KillWithContext(ctx); killErr != nil {
+		return fmt.Errorf("terminate failed: %v; force kill also failed: %w", terminateErr, killErr)
 	}
 	return nil
 }
@@ -246,31 +272,47 @@ func gitBranch(repoPath string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func detectFramework(projectPath string) string {
-	markers := map[string]string{
-		"package.json":       "Node.js",
-		"pom.xml":            "Java/Maven",
-		"build.gradle":       "Java/Gradle",
-		"go.mod":             "Go",
-		"pyproject.toml":     "Python",
-		"requirements.txt":   "Python",
-		"Cargo.toml":         "Rust",
-		"docker-compose.yml": "Docker Compose",
-	}
+// frameworkMarkers is checked in order, not as a map: Go map iteration is
+// randomized per run, which previously made detectFramework's result
+// nondeterministic for any project with more than one marker file present
+// (e.g. a monorepo with both package.json and go.mod). docker-compose.yml
+// is checked first since it's the strongest, least ambiguous signal —
+// a project orchestrated via Compose is a meaningfully different context
+// regardless of which languages happen to live inside it.
+var frameworkMarkers = []struct {
+	file      string
+	framework string
+}{
+	{"docker-compose.yml", "Docker Compose"},
+	{"package.json", "Node.js"},
+	{"go.mod", "Go"},
+	{"Cargo.toml", "Rust"},
+	{"pyproject.toml", "Python"},
+	{"requirements.txt", "Python"},
+	{"pom.xml", "Java/Maven"},
+	{"build.gradle", "Java/Gradle"},
+}
 
-	for file, framework := range markers {
-		if _, err := os.Stat(filepath.Join(projectPath, file)); err == nil {
-			return framework
+func detectFramework(projectPath string) string {
+	for _, marker := range frameworkMarkers {
+		if _, err := os.Stat(filepath.Join(projectPath, marker.file)); err == nil {
+			return marker.framework
 		}
 	}
 	return ""
 }
 
+// Socket type constants as reported by gopsutil/net (SOCK_STREAM/SOCK_DGRAM).
+const (
+	socketTypeTCP = 1
+	socketTypeUDP = 2
+)
+
 func socketTypeName(sockType uint32) string {
 	switch sockType {
-	case 1:
+	case socketTypeTCP:
 		return "tcp"
-	case 2:
+	case socketTypeUDP:
 		return "udp"
 	default:
 		return fmt.Sprintf("socket-%d", sockType)

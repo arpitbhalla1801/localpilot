@@ -48,8 +48,9 @@ func isSensitive(key string) bool {
 }
 
 func hasSensitiveValueShape(value string) bool {
+	lower := strings.ToLower(value)
 	for _, prefix := range sensitiveValuePrefixes {
-		if strings.HasPrefix(value, prefix) {
+		if strings.HasPrefix(lower, strings.ToLower(prefix)) {
 			return true
 		}
 	}

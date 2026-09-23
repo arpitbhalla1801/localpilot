@@ -1,11 +1,37 @@
 package output
 
 import (
+	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/arpitbhalla1801/localpilot/internal/models"
 )
+
+// captureStdout redirects os.Stdout for the duration of fn and returns
+// what it wrote, for testing Print* functions that write directly to
+// os.Stdout rather than an injectable io.Writer.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	original := os.Stdout
+	os.Stdout = w
+	fn()
+	os.Stdout = original
+	w.Close()
+
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read captured stdout: %v", err)
+	}
+	return string(out)
+}
 
 func TestFormatBytes(t *testing.T) {
 	tests := []struct {
@@ -140,5 +166,82 @@ func TestIsSystemOrBackgroundProcess(t *testing.T) {
 		if IsSystemOrBackgroundProcess(name) {
 			t.Errorf("IsSystemOrBackgroundProcess(%q) = true, want false", name)
 		}
+	}
+}
+
+// TestPrintKillConfirmation_NilProcess is the regression test for #34:
+// binding.Process == nil used to be dereferenced unconditionally in this
+// exact branch, guaranteeing a panic. It must instead print a fallback
+// message and return normally.
+func TestPrintKillConfirmation_NilProcess(t *testing.T) {
+	binding := &models.PortBinding{Port: 3000, InUse: true, Process: nil}
+
+	out := captureStdout(t, func() {
+		PrintKillConfirmation(binding)
+	})
+
+	if !strings.Contains(out, "3000") {
+		t.Errorf("PrintKillConfirmation with nil Process output = %q, want it to mention the port", out)
+	}
+}
+
+func TestPrintKillConfirmation_WithProcess(t *testing.T) {
+	binding := &models.PortBinding{
+		Port:    3000,
+		InUse:   true,
+		Process: &models.Process{PID: 1234, Name: "node"},
+	}
+
+	out := captureStdout(t, func() {
+		PrintKillConfirmation(binding)
+	})
+
+	if !strings.Contains(out, "1234") || !strings.Contains(out, "node") {
+		t.Errorf("PrintKillConfirmation output = %q, want it to mention PID 1234 and name node", out)
+	}
+}
+
+// TestPrintDashboard_ShowsContainerName is the regression test for #37:
+// the dashboard (bare `localpilot`) used to show the raw local process
+// name (e.g. docker-proxy/com.docker.backend) for a container-published
+// port, unlike list/port/inspect, which all resolve it to the container's
+// own name.
+func TestPrintDashboard_ShowsContainerName(t *testing.T) {
+	ports := []models.Port{
+		{
+			Number:    3000,
+			Address:   "localhost",
+			Process:   &models.Process{PID: 1, Name: "com.docker.backend"},
+			Container: &models.Container{ID: "abc123", Name: "my-app", Image: "nginx:alpine"},
+		},
+	}
+
+	out := captureStdout(t, func() {
+		PrintDashboard(ports)
+	})
+
+	if !strings.Contains(out, "my-app") {
+		t.Errorf("PrintDashboard output = %q, want it to mention container name my-app", out)
+	}
+	if strings.Contains(out, "com.docker.backend") {
+		t.Errorf("PrintDashboard output = %q, want the generic backend process name replaced, not also shown", out)
+	}
+}
+
+func TestPrintDashboard_NoContainerShowsProcessName(t *testing.T) {
+	ports := []models.Port{
+		{
+			Number:  3000,
+			Address: "localhost",
+			Process: &models.Process{PID: 1, Name: "node"},
+		},
+	}
+
+	out := captureStdout(t, func() {
+		PrintDashboard(ports)
+	})
+
+	if !strings.Contains(out, "node") {
+		t.Errorf("PrintDashboard output = %q, want it to mention process name node", out)
 	}
 }

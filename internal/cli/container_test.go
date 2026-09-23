@@ -1,10 +1,33 @@
 package cli
 
 import (
+	"os"
 	"testing"
 
 	"github.com/arpitbhalla1801/localpilot/internal/models"
 )
+
+// withStdin temporarily replaces os.Stdin with a pipe pre-loaded with
+// input, for exercising confirm()-based prompts without blocking on a
+// real terminal.
+func withStdin(t *testing.T, input string) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	if _, err := w.WriteString(input); err != nil {
+		t.Fatalf("write to pipe: %v", err)
+	}
+	w.Close()
+
+	original := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() {
+		os.Stdin = original
+		r.Close()
+	})
+}
 
 // TestResolveContainerStop_Force covers the non-interactive branches,
 // which are fully deterministic:
@@ -67,4 +90,29 @@ func TestResolveContainerStop_SoleContainerNeverPromptsInteractively(t *testing.
 	if stop || blocked {
 		t.Errorf("resolveContainerStop for the sole running container = (stop=%v, blocked=%v), want (false, false)", stop, blocked)
 	}
+}
+
+// TestResolveContainerStop_ExplicitFlagWithoutForceStillConfirms is the
+// regression test for #33: --container without --force must still ask
+// for confirmation like every other kill/free path, rather than stopping
+// the container immediately just because the flag was passed.
+func TestResolveContainerStop_ExplicitFlagWithoutForceStillConfirms(t *testing.T) {
+	container := &models.Container{ID: "abc123", Name: "my-app", Image: "nginx:alpine"}
+	proc := &models.Process{PID: 1}
+
+	t.Run("declining the prompt does not stop the container", func(t *testing.T) {
+		withStdin(t, "n\n")
+		stop, blocked := resolveContainerStop(container, proc, false /* force */, true /* containerFlag */, false /* soleContainer */)
+		if stop || blocked {
+			t.Errorf("resolveContainerStop(containerFlag=true, force=false, answer=n) = (stop=%v, blocked=%v), want (false, false)", stop, blocked)
+		}
+	})
+
+	t.Run("confirming the prompt stops the container", func(t *testing.T) {
+		withStdin(t, "y\n")
+		stop, blocked := resolveContainerStop(container, proc, false /* force */, true /* containerFlag */, false /* soleContainer */)
+		if !stop || blocked {
+			t.Errorf("resolveContainerStop(containerFlag=true, force=false, answer=y) = (stop=%v, blocked=%v), want (true, false)", stop, blocked)
+		}
+	})
 }

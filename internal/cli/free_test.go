@@ -19,8 +19,7 @@ func TestFreeCmd_KillsListener(t *testing.T) {
 
 	port := freePort(t)
 	helper := startListenerHelper(t, port)
-	defer helper.stop()
-	helper.waitListening(t)
+	helper.WaitListening(t)
 
 	binding, err := a.FindPort(context.Background(), port)
 	if err != nil || !binding.InUse {
@@ -42,7 +41,7 @@ func TestFreeCmd_KillsListener(t *testing.T) {
 		t.Skipf("free reported port %d as not in use by the time it ran — likely the helper process was reaped by the sandbox (output: %q)", port, out.String())
 	}
 
-	helper.waitExit(t, 5*time.Second)
+	helper.WaitExit(t, 5*time.Second)
 
 	binding, err = a.FindPort(context.Background(), port)
 	if err != nil {
