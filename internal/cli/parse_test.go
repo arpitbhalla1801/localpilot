@@ -182,20 +182,20 @@ func TestListCmd_InvalidRange(t *testing.T) {
 }
 
 func TestNonNilPorts(t *testing.T) {
-	if got := nonNilPorts(nil); got == nil {
-		t.Error("nonNilPorts(nil) returned nil, want an empty non-nil slice")
+	if got := nonNil[models.Port](nil); got == nil {
+		t.Error("nonNil[models.Port](nil) returned nil, want an empty non-nil slice")
 	}
 
-	b, err := json.Marshal(nonNilPorts(nil))
+	b, err := json.Marshal(nonNil[models.Port](nil))
 	if err != nil {
 		t.Fatalf("json.Marshal failed: %v", err)
 	}
 	if string(b) != "[]" {
-		t.Errorf("json.Marshal(nonNilPorts(nil)) = %s, want []", b)
+		t.Errorf("json.Marshal(nonNil[models.Port](nil)) = %s, want []", b)
 	}
 
 	populated := []models.Port{{Number: 80}}
-	if got := nonNilPorts(populated); len(got) != 1 {
-		t.Errorf("nonNilPorts(populated) = %v, want unchanged populated slice", got)
+	if got := nonNil(populated); len(got) != 1 {
+		t.Errorf("nonNil(populated) = %v, want unchanged populated slice", got)
 	}
 }

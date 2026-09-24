@@ -54,18 +54,8 @@ type WSLProcess struct {
 type Project struct {
 	Name       string `json:"name"`
 	Path       string `json:"path,omitempty"`
-	Repository string `json:"repository,omitempty"`
 	Branch     string `json:"branch,omitempty"`
 	Framework  string `json:"framework,omitempty"`
-}
-
-// Service represents a logical service within a project.
-type Service struct {
-	Name    string   `json:"name"`
-	Project *Project `json:"project,omitempty"`
-	Process *Process `json:"process,omitempty"`
-	Ports   []int    `json:"ports,omitempty"`
-	Status  string   `json:"status,omitempty"`
 }
 
 // PortBinding summarizes a port with its owning process and project context.

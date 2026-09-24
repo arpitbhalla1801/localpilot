@@ -17,6 +17,17 @@ import (
 // but a hung socket shouldn't be able to stall list/port/inspect.
 const dockerLookupTimeout = 2 * time.Second
 
+// dockerOutput runs a docker CLI command bounded by dockerLookupTimeout,
+// failing if docker isn't installed.
+func dockerOutput(ctx context.Context, args ...string) ([]byte, error) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, dockerLookupTimeout)
+	defer cancel()
+	return exec.CommandContext(ctx, "docker", args...).Output()
+}
+
 // dockerPSEntry mirrors the fields we need from `docker ps --format json`.
 type dockerPSEntry struct {
 	ID    string `json:"ID"`
@@ -38,14 +49,7 @@ type dockerPSEntry struct {
 // rather than an error, so callers don't need special-case handling for
 // "Docker isn't in play here".
 func ListDockerContainerPorts(ctx context.Context) map[int]*models.Container {
-	if _, err := exec.LookPath("docker"); err != nil {
-		return nil
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, dockerLookupTimeout)
-	defer cancel()
-
-	out, err := exec.CommandContext(ctx, "docker", "ps", "--format", "{{json .}}").Output()
+	out, err := dockerOutput(ctx, "ps", "--format", "{{json .}}")
 	if err != nil {
 		return nil
 	}
@@ -89,14 +93,7 @@ func containerFromPSEntry(entry dockerPSEntry) *models.Container {
 // spans every container, unlike Linux's one-docker-proxy-per-port) could
 // affect containers beyond the one currently in view.
 func RunningContainerCount(ctx context.Context) (count int, ok bool) {
-	if _, err := exec.LookPath("docker"); err != nil {
-		return 0, false
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, dockerLookupTimeout)
-	defer cancel()
-
-	out, err := exec.CommandContext(ctx, "docker", "ps", "-q").Output()
+	out, err := dockerOutput(ctx, "ps", "-q")
 	if err != nil {
 		return 0, false
 	}

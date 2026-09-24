@@ -16,6 +16,7 @@ import (
 	"github.com/arpitbhalla1801/localpilot/internal/agent"
 	"github.com/arpitbhalla1801/localpilot/internal/models"
 	"github.com/arpitbhalla1801/localpilot/internal/output"
+	"github.com/arpitbhalla1801/localpilot/internal/platform"
 	"github.com/spf13/cobra"
 )
 
@@ -112,14 +113,14 @@ func init() {
 var listJSON bool
 var showAll bool
 
-// nonNilPorts ensures a JSON list endpoint always marshals to "[]" for an
+// nonNil ensures a JSON list endpoint always marshals to "[]" for an
 // empty result rather than "null" (Go's encoding/json for a nil slice),
 // which a caller expecting an array to iterate would otherwise choke on.
-func nonNilPorts(ports []models.Port) []models.Port {
-	if ports == nil {
-		return []models.Port{}
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
 	}
-	return ports
+	return s
 }
 
 func filterPorts(ports []models.Port) []models.Port {
@@ -172,7 +173,7 @@ var listCmd = &cobra.Command{
 		}
 
 		if listJSON {
-			return printJSON(cmd.OutOrStdout(), nonNilPorts(ports))
+			return printJSON(cmd.OutOrStdout(), nonNil(ports))
 		}
 		output.PrintList(ports)
 		return nil
@@ -235,7 +236,7 @@ var inspectCmd = &cobra.Command{
 			return err
 		}
 
-		project := agent.DetectProject(proc.Cwd)
+		project := platform.DetectProject(proc.Cwd)
 
 		if inspectJSON {
 			return printJSON(cmd.OutOrStdout(), struct {
@@ -248,9 +249,32 @@ var inspectCmd = &cobra.Command{
 	},
 }
 
-var killForce bool
-var killJSON bool
-var killContainer bool
+// termOpts holds the flags shared by kill and free.
+type termOpts struct {
+	force, json, container bool
+}
+
+var killOpts, freeOpts termOpts
+
+func (o *termOpts) register(c *cobra.Command) {
+	c.Flags().BoolVar(&o.force, "force", false, "Skip confirmation and force kill")
+	c.Flags().BoolVar(&o.json, "json", false, "Output as JSON (requires --force)")
+	c.Flags().BoolVar(&o.container, "container", false, "With --force, stop the owning Docker container instead of killing the process")
+}
+
+func (o *termOpts) checkJSON() error {
+	if o.json && !o.force {
+		return fmt.Errorf("--json requires --force")
+	}
+	return nil
+}
+
+func (o *termOpts) checkInteractive(verb string) error {
+	if !o.force && !isInteractiveStdin() {
+		return fmt.Errorf("refusing to prompt for confirmation: stdin is not a terminal; pass --force to %s non-interactively", verb)
+	}
+	return nil
+}
 
 // terminationResult is the --json payload shared by kill and free, so
 // scripts piping into jq see the same shape from either command.
@@ -320,12 +344,84 @@ func resolveContainerStop(container *models.Container, proc *models.Process, for
 // running, per RunningContainerCount. If the count can't be determined
 // (Docker unreachable), it conservatively reports false so callers treat
 // the situation as if other containers might exist.
-func soleRunningContainer(ctx context.Context, a *agent.Agent, c *models.Container) bool {
+func soleRunningContainer(ctx context.Context, c *models.Container) bool {
 	if c == nil {
 		return true
 	}
-	n, ok := a.RunningContainerCount(ctx)
+	n, ok := platform.RunningContainerCount(ctx)
 	return ok && n <= 1
+}
+
+// termTarget is what kill/free is about to act on: the owning process, the
+// Docker container behind it (if any), the port it was resolved from (nil
+// when targeted by PID), and how to describe it in a confirmation prompt.
+type termTarget struct {
+	proc      *models.Process
+	container *models.Container
+	port      *int
+	confirm   func()
+}
+
+// terminate stops the target's container or kills its process, confirming
+// first unless o.force, and reports the result as JSON or text.
+func terminate(ctx context.Context, out io.Writer, o *termOpts, t termTarget) error {
+	stop, blocked := resolveContainerStop(t.container, t.proc, o.force, o.container, soleRunningContainer(ctx, t.container))
+	subject := fmt.Sprintf("process %d", t.proc.PID)
+	where := ""
+	if t.port != nil {
+		subject = fmt.Sprintf("port %d", *t.port)
+		where = fmt.Sprintf(" (port %d)", *t.port)
+	}
+	if blocked {
+		return fmt.Errorf("%s is owned by Docker container %q, and other containers are also running: pass --container to stop it, since killing the process risks affecting them too", subject, t.container.Name)
+	}
+
+	res := terminationResult{Port: t.port, Terminated: true}
+	var msg string
+	if stop {
+		if err := platform.StopContainer(ctx, t.container.ID); err != nil {
+			return fmt.Errorf("failed to stop container %s: %w", t.container.Name, err)
+		}
+		res.Container, res.ContainerStopped = t.container.Name, true
+		msg = fmt.Sprintf("Container %s%s stopped.", t.container.Name, where)
+	} else {
+		if !o.force {
+			t.confirm()
+			if !confirm() {
+				fmt.Println("Cancelled.")
+				return nil
+			}
+		}
+		if err := platform.KillPID(ctx, t.proc.PID, o.force); err != nil {
+			return fmt.Errorf("failed to kill process %d: %w", t.proc.PID, err)
+		}
+		res.PID = t.proc.PID
+		msg = fmt.Sprintf("Process %d%s terminated.", t.proc.PID, where)
+	}
+
+	if o.json {
+		return printJSON(out, res)
+	}
+	fmt.Println(msg)
+	return nil
+}
+
+// findPortTarget resolves target as a port that is in use by an identified
+// process. It returns a nil binding if target isn't a port number or the
+// port isn't in use.
+func findPortTarget(ctx context.Context, a *agent.Agent, target string) (*models.PortBinding, int, error) {
+	port, err := parsePort(target)
+	if err != nil {
+		return nil, 0, nil
+	}
+	binding, err := a.FindPort(ctx, port)
+	if err != nil {
+		return nil, 0, err
+	}
+	if binding.InUse && binding.Process != nil {
+		return binding, port, nil
+	}
+	return nil, 0, nil
 }
 
 var killCmd = &cobra.Command{
@@ -350,8 +446,8 @@ var killCmd = &cobra.Command{
 		"  localpilot kill 3000 --force --container    # stop the owning container instead",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if killJSON && !killForce {
-			return fmt.Errorf("--json requires --force")
+		if err := killOpts.checkJSON(); err != nil {
+			return err
 		}
 
 		a, err := agent.New()
@@ -359,8 +455,8 @@ var killCmd = &cobra.Command{
 			return err
 		}
 
-		if !killForce && !isInteractiveStdin() {
-			return fmt.Errorf("refusing to prompt for confirmation: stdin is not a terminal; pass --force to kill non-interactively")
+		if err := killOpts.checkInteractive("kill"); err != nil {
+			return err
 		}
 
 		target := args[0]
@@ -371,44 +467,15 @@ var killCmd = &cobra.Command{
 		// the documented, primary use of `kill <target>` (see README), and
 		// resolving to the wrong PID here means killing an unrelated
 		// process — so a port match always wins over a PID match.
-		if port, portErr := parsePort(target); portErr == nil {
-			binding, err := a.FindPort(ctx, port)
-			if err != nil {
-				return err
-			}
-			if binding.InUse && binding.Process != nil {
-				stop, blocked := resolveContainerStop(binding.Container, binding.Process, killForce, killContainer, soleRunningContainer(ctx, a, binding.Container))
-				if blocked {
-					return fmt.Errorf("port %d is owned by Docker container %q, and other containers are also running: pass --container to stop it, since killing the process risks affecting them too", port, binding.Container.Name)
-				}
-				if stop {
-					if err := a.StopContainer(ctx, binding.Container.ID); err != nil {
-						return fmt.Errorf("failed to stop container %s: %w", binding.Container.Name, err)
-					}
-					if killJSON {
-						return printJSON(cmd.OutOrStdout(), terminationResult{Port: &port, Terminated: true, Container: binding.Container.Name, ContainerStopped: true})
-					}
-					fmt.Printf("Container %s (port %d) stopped.\n", binding.Container.Name, port)
-					return nil
-				}
-
-				if !killForce {
-					output.PrintKillConfirmation(binding)
-					if !confirm() {
-						fmt.Println("Cancelled.")
-						return nil
-					}
-				}
-
-				if err := a.Kill(ctx, binding.Process.PID, killForce); err != nil {
-					return fmt.Errorf("failed to kill process %d: %w", binding.Process.PID, err)
-				}
-				if killJSON {
-					return printJSON(cmd.OutOrStdout(), terminationResult{PID: binding.Process.PID, Port: &port, Terminated: true})
-				}
-				fmt.Printf("Process %d (port %d) terminated.\n", binding.Process.PID, port)
-				return nil
-			}
+		binding, port, err := findPortTarget(ctx, a, target)
+		if err != nil {
+			return err
+		}
+		if binding != nil {
+			return terminate(ctx, cmd.OutOrStdout(), &killOpts, termTarget{
+				proc: binding.Process, container: binding.Container, port: &port,
+				confirm: func() { output.PrintKillConfirmation(binding) },
+			})
 		}
 
 		pid, pidErr := parsePID(target)
@@ -420,45 +487,14 @@ var killCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("no listening port and no process found for %q", target)
 		}
-		project := agent.DetectProject(proc.Cwd)
+		project := platform.DetectProject(proc.Cwd)
 
-		stop, blocked := resolveContainerStop(proc.Container, proc, killForce, killContainer, soleRunningContainer(ctx, a, proc.Container))
-		if blocked {
-			return fmt.Errorf("process %d is owned by Docker container %q, and other containers are also running: pass --container to stop it, since killing the process risks affecting them too", pid, proc.Container.Name)
-		}
-		if stop {
-			if err := a.StopContainer(ctx, proc.Container.ID); err != nil {
-				return fmt.Errorf("failed to stop container %s: %w", proc.Container.Name, err)
-			}
-			if killJSON {
-				return printJSON(cmd.OutOrStdout(), terminationResult{Terminated: true, Container: proc.Container.Name, ContainerStopped: true})
-			}
-			fmt.Printf("Container %s stopped.\n", proc.Container.Name)
-			return nil
-		}
-
-		if !killForce {
-			output.PrintKillByPIDConfirmation(proc, project)
-			if !confirm() {
-				fmt.Println("Cancelled.")
-				return nil
-			}
-		}
-
-		if err := a.Kill(ctx, pid, killForce); err != nil {
-			return fmt.Errorf("failed to kill process %d: %w", pid, err)
-		}
-		if killJSON {
-			return printJSON(cmd.OutOrStdout(), terminationResult{PID: pid, Terminated: true})
-		}
-		fmt.Printf("Process %d terminated.\n", pid)
-		return nil
+		return terminate(ctx, cmd.OutOrStdout(), &killOpts, termTarget{
+			proc: proc, container: proc.Container,
+			confirm: func() { output.PrintKillByPIDConfirmation(proc, project) },
+		})
 	},
 }
-
-var freeForce bool
-var freeJSON bool
-var freeContainer bool
 
 var freeCmd = &cobra.Command{
 	Use:   "free <PORT>",
@@ -483,8 +519,8 @@ var freeCmd = &cobra.Command{
 		"  localpilot free 3000 --force --container    # stop the owning container instead",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if freeJSON && !freeForce {
-			return fmt.Errorf("--json requires --force")
+		if err := freeOpts.checkJSON(); err != nil {
+			return err
 		}
 
 		port, err := parsePort(args[0])
@@ -497,8 +533,8 @@ var freeCmd = &cobra.Command{
 			return err
 		}
 
-		if !freeForce && !isInteractiveStdin() {
-			return fmt.Errorf("refusing to prompt for confirmation: stdin is not a terminal; pass --force to free non-interactively")
+		if err := freeOpts.checkInteractive("free"); err != nil {
+			return err
 		}
 
 		ctx := context.Background()
@@ -508,44 +544,17 @@ var freeCmd = &cobra.Command{
 		}
 
 		if !binding.InUse || binding.Process == nil {
-			if freeJSON {
+			if freeOpts.json {
 				return printJSON(cmd.OutOrStdout(), terminationResult{Port: &port, Terminated: false})
 			}
 			fmt.Printf("Port %d is not in use.\n", port)
 			return nil
 		}
 
-		stop, blocked := resolveContainerStop(binding.Container, binding.Process, freeForce, freeContainer, soleRunningContainer(ctx, a, binding.Container))
-		if blocked {
-			return fmt.Errorf("port %d is owned by Docker container %q, and other containers are also running: pass --container to stop it, since killing the process risks affecting them too", port, binding.Container.Name)
-		}
-		if stop {
-			if err := a.StopContainer(ctx, binding.Container.ID); err != nil {
-				return fmt.Errorf("failed to stop container %s: %w", binding.Container.Name, err)
-			}
-			if freeJSON {
-				return printJSON(cmd.OutOrStdout(), terminationResult{Port: &port, Terminated: true, Container: binding.Container.Name, ContainerStopped: true})
-			}
-			fmt.Printf("Container %s (port %d) stopped.\n", binding.Container.Name, port)
-			return nil
-		}
-
-		if !freeForce {
-			output.PrintKillConfirmation(binding)
-			if !confirm() {
-				fmt.Println("Cancelled.")
-				return nil
-			}
-		}
-
-		if err := a.Kill(ctx, binding.Process.PID, freeForce); err != nil {
-			return fmt.Errorf("failed to kill process %d: %w", binding.Process.PID, err)
-		}
-		if freeJSON {
-			return printJSON(cmd.OutOrStdout(), terminationResult{PID: binding.Process.PID, Port: &port, Terminated: true})
-		}
-		fmt.Printf("Process %d (port %d) terminated.\n", binding.Process.PID, port)
-		return nil
+		return terminate(ctx, cmd.OutOrStdout(), &freeOpts, termTarget{
+			proc: binding.Process, container: binding.Container, port: &port,
+			confirm: func() { output.PrintKillConfirmation(binding) },
+		})
 	},
 }
 
@@ -555,11 +564,8 @@ var watchInterval time.Duration
 // number is ambiguous between the two, and a port match always wins
 // because `watch <target>` is documented primarily for ports (see README).
 func resolveWatchTarget(ctx context.Context, a *agent.Agent, target string) (port int, pid int32, isPort bool, err error) {
-	if p, portErr := parsePort(target); portErr == nil {
-		binding, findErr := a.FindPort(ctx, p)
-		if findErr == nil && binding.InUse && binding.Process != nil {
-			return p, 0, true, nil
-		}
+	if binding, p, findErr := findPortTarget(ctx, a, target); findErr == nil && binding != nil {
+		return p, 0, true, nil
 	}
 	if id, pidErr := parsePID(target); pidErr == nil {
 		return 0, id, false, nil
@@ -589,7 +595,7 @@ func watchTick(ctx context.Context, a *agent.Agent, port int, pid int32, isPort 
 		fmt.Printf("Process %d is not running.\n", pid)
 		return
 	}
-	project := agent.DetectProject(proc.Cwd)
+	project := platform.DetectProject(proc.Cwd)
 	output.PrintInspect(proc, project)
 }
 
@@ -667,31 +673,18 @@ var doctorCmd = &cobra.Command{
 		conflicts := agent.DetectConflicts(filterPorts(ports))
 
 		if doctorJSON {
-			return printJSON(cmd.OutOrStdout(), nonNilConflicts(conflicts))
+			return printJSON(cmd.OutOrStdout(), nonNil(conflicts))
 		}
 		output.PrintDoctor(conflicts)
 		return nil
 	},
 }
 
-// nonNilConflicts mirrors nonNilPorts: an empty result marshals to "[]"
-// rather than "null" so a script piping into jq gets an iterable array.
-func nonNilConflicts(conflicts []models.Conflict) []models.Conflict {
-	if conflicts == nil {
-		return []models.Conflict{}
-	}
-	return conflicts
-}
-
 func init() {
 	rootCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
 	listCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all processes (including system/background)")
-	killCmd.Flags().BoolVar(&killForce, "force", false, "Skip confirmation and force kill")
-	killCmd.Flags().BoolVar(&killJSON, "json", false, "Output as JSON (requires --force)")
-	killCmd.Flags().BoolVar(&killContainer, "container", false, "With --force, stop the owning Docker container instead of killing the process")
-	freeCmd.Flags().BoolVar(&freeForce, "force", false, "Skip confirmation and force kill")
-	freeCmd.Flags().BoolVar(&freeJSON, "json", false, "Output as JSON (requires --force)")
-	freeCmd.Flags().BoolVar(&freeContainer, "container", false, "With --force, stop the owning Docker container instead of killing the process")
+	killOpts.register(killCmd)
+	freeOpts.register(freeCmd)
 	watchCmd.Flags().DurationVar(&watchInterval, "interval", time.Second, "Refresh interval (e.g. 1s, 500ms)")
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "Output as JSON")
 	listCmd.Flags().StringVar(&listRange, "range", "", "Only show ports within <start>-<end>, e.g. 3000-4000")

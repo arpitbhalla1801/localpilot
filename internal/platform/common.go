@@ -15,61 +15,42 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 )
 
-func enrichProcess(ctx context.Context, pid int32) (*models.Process, error) {
+// nameOrRestricted returns name, or "Restricted" when the OS withheld it.
+func nameOrRestricted(name string) string {
+	if name == "" {
+		return "Restricted"
+	}
+	return name
+}
+
+func EnrichProcess(ctx context.Context, pid int32) (*models.Process, error) {
 	proc, err := process.NewProcessWithContext(ctx, pid)
 	if err != nil {
 		return nil, fmt.Errorf("process %d not found: %w", pid, err)
 	}
 
+	// Fields the OS won't reveal (permissions, races) are left zero-valued.
+	p := &models.Process{PID: pid}
 	name, _ := proc.NameWithContext(ctx)
-	if name == "" {
-		name = "Restricted"
+	p.Name = nameOrRestricted(name)
+	p.Command, _ = proc.CmdlineWithContext(ctx)
+	p.Cwd, _ = proc.CwdWithContext(ctx)
+	p.CPUPercent, _ = proc.CPUPercentWithContext(ctx)
+	if mem, _ := proc.MemoryInfoWithContext(ctx); mem != nil {
+		p.MemoryBytes = mem.RSS
 	}
-	cmdline, _ := proc.CmdlineWithContext(ctx)
-	cwd, _ := proc.CwdWithContext(ctx)
-	cpu, _ := proc.CPUPercentWithContext(ctx)
-	memInfo, _ := proc.MemoryInfoWithContext(ctx)
-	createTime, _ := proc.CreateTimeWithContext(ctx)
-	parent, _ := proc.ParentWithContext(ctx)
-
-	var parentPID int32
-	var parentName string
-	if parent != nil {
-		parentPID = parent.Pid
-		parentName, _ = parent.NameWithContext(ctx)
-		if parentName == "" {
-			parentName = "Restricted"
-		}
+	if created, _ := proc.CreateTimeWithContext(ctx); created > 0 {
+		p.StartTime = time.UnixMilli(created)
 	}
-
-	var memory uint64
-	if memInfo != nil {
-		memory = memInfo.RSS
+	if parent, _ := proc.ParentWithContext(ctx); parent != nil {
+		p.ParentPID = parent.Pid
+		parentName, _ := parent.NameWithContext(ctx)
+		p.ParentName = nameOrRestricted(parentName)
 	}
-
-	var startTime time.Time
-	if createTime > 0 {
-		startTime = time.UnixMilli(createTime)
-	}
-
 	env, _ := proc.EnvironWithContext(ctx)
-	envMap := parseEnviron(env)
-
-	openPorts, _ := listPortsForPID(ctx, pid)
-
-	return &models.Process{
-		PID:         pid,
-		Name:        name,
-		Command:     cmdline,
-		Cwd:         cwd,
-		ParentPID:   parentPID,
-		ParentName:  parentName,
-		CPUPercent:  cpu,
-		MemoryBytes: memory,
-		StartTime:   startTime,
-		Environment: security.MaskEnvironment(envMap),
-		OpenPorts:   openPorts,
-	}, nil
+	p.Environment = security.MaskEnvironment(parseEnviron(env))
+	p.OpenPorts, _ = listPortsForPID(ctx, pid)
+	return p, nil
 }
 
 func parseEnviron(env []string) map[string]string {
@@ -116,7 +97,7 @@ func listPortsForPID(ctx context.Context, pid int32) ([]int, error) {
 	return ports, nil
 }
 
-func findListeningPort(ctx context.Context, port int) (*models.PortBinding, error) {
+func FindListeningPort(ctx context.Context, port int) (*models.PortBinding, error) {
 	conns, err := net.ConnectionsWithContext(ctx, "all")
 	if err != nil {
 		return nil, err
@@ -131,12 +112,12 @@ func findListeningPort(ctx context.Context, port int) (*models.PortBinding, erro
 			continue
 		}
 
-		proc, err := enrichProcess(ctx, c.Pid)
+		proc, err := EnrichProcess(ctx, c.Pid)
 		if err != nil {
 			continue
 		}
 
-		project := detectProject(proc.Cwd)
+		project := DetectProject(proc.Cwd)
 
 		return &models.PortBinding{
 			Port:    port,
@@ -152,7 +133,7 @@ func findListeningPort(ctx context.Context, port int) (*models.PortBinding, erro
 	}, nil
 }
 
-func listAllListeningPorts(ctx context.Context) ([]models.Port, error) {
+func ListAllListeningPorts(ctx context.Context) ([]models.Port, error) {
 	conns, err := net.ConnectionsWithContext(ctx, "all")
 	if err != nil {
 		return nil, err
@@ -185,7 +166,7 @@ func listAllListeningPorts(ctx context.Context) ([]models.Port, error) {
 		}
 
 		if c.Pid > 0 {
-			proc, err := enrichProcess(ctx, c.Pid)
+			proc, err := EnrichProcess(ctx, c.Pid)
 			if err == nil {
 				port.Process = proc
 			}
@@ -197,7 +178,7 @@ func listAllListeningPorts(ctx context.Context) ([]models.Port, error) {
 	return ports, nil
 }
 
-func killPID(ctx context.Context, pid int32, force bool) error {
+func KillPID(ctx context.Context, pid int32, force bool) error {
 	proc, err := process.NewProcessWithContext(ctx, pid)
 	if err != nil {
 		return fmt.Errorf("process %d not found: %w", pid, err)
@@ -224,7 +205,7 @@ func killPID(ctx context.Context, pid int32, force bool) error {
 	return nil
 }
 
-func detectProject(cwd string) *models.Project {
+func DetectProject(cwd string) *models.Project {
 	if cwd == "" {
 		return nil
 	}
@@ -244,7 +225,6 @@ func detectProject(cwd string) *models.Project {
 	return &models.Project{
 		Name:       name,
 		Path:       gitRoot,
-		Repository: name,
 		Branch:     branch,
 		Framework:  framework,
 	}

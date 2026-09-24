@@ -15,8 +15,8 @@ func shortenPath(path string) string {
 	if err != nil {
 		return path
 	}
-	if strings.HasPrefix(path, home) {
-		return "~" + strings.TrimPrefix(path, home)
+	if rest, ok := strings.CutPrefix(path, home); ok {
+		return "~" + rest
 	}
 	return path
 }
@@ -72,15 +72,14 @@ func formatTime(t time.Time) string {
 	return t.Format("15:04:05")
 }
 
-func formatStarted(t time.Time) string {
-	if t.IsZero() {
-		return "unknown"
-	}
-	ago := time.Since(t)
-	if ago < 24*time.Hour {
-		return formatDuration(ago) + " ago"
-	}
-	return t.Format("Jan 2, 15:04")
+
+const rule = "────────────────────────────────────"
+
+// section prints a blank line, a section title and a rule under it.
+func section(title string) {
+	fmt.Println()
+	fmt.Println(title)
+	fmt.Println(rule)
 }
 
 // PrintPortDoctor displays port occupancy details.
@@ -96,20 +95,16 @@ func PrintPortDoctor(binding *models.PortBinding) {
 	}
 
 	fmt.Println("Status: IN USE")
-	fmt.Println()
 
 	proc := binding.Process
-	fmt.Println("Process")
-	fmt.Println("────────────────────────────────────")
+	section("Process")
 	fmt.Printf("PID             %d\n", proc.PID)
 	fmt.Printf("Name            %s\n", sanitize(proc.Name))
 	fmt.Printf("CPU             %.1f%%\n", proc.CPUPercent)
 	fmt.Printf("Memory          %s\n", formatBytes(proc.MemoryBytes))
 	fmt.Printf("Started         %s\n", formatTime(proc.StartTime))
 
-	fmt.Println()
-	fmt.Println("Command")
-	fmt.Println("────────────────────────────────────")
+	section("Command")
 	if proc.Command != "" {
 		fmt.Println(sanitize(proc.Command))
 	} else {
@@ -117,34 +112,26 @@ func PrintPortDoctor(binding *models.PortBinding) {
 	}
 
 	if proc.Cwd != "" {
-		fmt.Println()
-		fmt.Println("Working Directory")
-		fmt.Println("────────────────────────────────────")
+		section("Working Directory")
 		fmt.Println(sanitize(shortenPath(proc.Cwd)))
 	}
 
 	if binding.Container != nil {
-		fmt.Println()
-		fmt.Println("Docker Container")
-		fmt.Println("────────────────────────────────────")
+		section("Docker Container")
 		fmt.Printf("Name            %s\n", sanitize(binding.Container.Name))
 		fmt.Printf("Image           %s\n", sanitize(binding.Container.Image))
 		fmt.Printf("ID              %s\n", sanitize(binding.Container.ID))
 	}
 
 	if binding.WSL != nil {
-		fmt.Println()
-		fmt.Println("WSL Process")
-		fmt.Println("────────────────────────────────────")
+		section("WSL Process")
 		fmt.Printf("Distro          %s\n", sanitize(binding.WSL.Distro))
 		fmt.Printf("PID             %d\n", binding.WSL.PID)
 		fmt.Printf("Name            %s\n", sanitize(binding.WSL.Name))
 	}
 
 	if binding.Project != nil {
-		fmt.Println()
-		fmt.Println("Git Repository")
-		fmt.Println("────────────────────────────────────")
+		section("Git Repository")
 		fmt.Println(sanitize(binding.Project.Name))
 		if binding.Project.Branch != "" {
 			fmt.Printf("Branch: %s\n", sanitize(binding.Project.Branch))
@@ -155,19 +142,30 @@ func PrintPortDoctor(binding *models.PortBinding) {
 	}
 
 	if proc.ParentName != "" {
-		fmt.Println()
-		fmt.Println("Parent Process")
-		fmt.Println("────────────────────────────────────")
+		section("Parent Process")
 		fmt.Printf("%s (PID %d)\n", sanitize(proc.ParentName), proc.ParentPID)
 	}
 
-	fmt.Println("────────────────────────────────────")
+	fmt.Println(rule)
 	fmt.Println("Suggested actions:")
 	fmt.Printf("  localpilot inspect %d\n", proc.PID)
 	fmt.Printf("  localpilot kill %d\n", proc.PID)
 	if binding.Project != nil {
 		fmt.Printf("  Project: %s\n", sanitize(shortenPath(binding.Project.Path)))
 	}
+}
+
+// nameAndPID returns display forms of a port's owning process name and PID,
+// or "-" when unknown.
+func nameAndPID(p models.Port) (name, pid string) {
+	name, pid = "-", "-"
+	if p.Process != nil {
+		name = sanitize(p.Process.Name)
+		pid = fmt.Sprintf("%d", p.Process.PID)
+	} else if p.PID > 0 {
+		pid = fmt.Sprintf("%d", p.PID)
+	}
+	return name, pid
 }
 
 // PrintInspect displays detailed process information.
@@ -263,20 +261,12 @@ func PrintList(ports []models.Port) {
 	fmt.Println(strings.Repeat("─", 72))
 
 	for _, p := range ports {
-		name := "-"
-		pid := "-"
+		name, pid := nameAndPID(p)
 		status := "● RUNNING"
 		container := "-"
 
-		if p.Process != nil {
-			name = sanitize(p.Process.Name)
-			pid = fmt.Sprintf("%d", p.Process.PID)
-
-			if !p.Process.StartTime.IsZero() && time.Since(p.Process.StartTime) > 48*time.Hour && !IsSystemOrBackgroundProcess(name) {
-				status = "⚠ STALE"
-			}
-		} else if p.PID > 0 {
-			pid = fmt.Sprintf("%d", p.PID)
+		if p.Process != nil && !p.Process.StartTime.IsZero() && time.Since(p.Process.StartTime) > 48*time.Hour && !IsSystemOrBackgroundProcess(name) {
+			status = "⚠ STALE"
 		}
 
 		if p.Container != nil {
@@ -351,14 +341,7 @@ func PrintDoctor(conflicts []models.Conflict) {
 		}
 		fmt.Printf("⚠ Port %d: %s\n", c.Port, sanitize(c.Message))
 		for _, p := range c.Ports {
-			name := "-"
-			pid := "-"
-			if p.Process != nil {
-				name = sanitize(p.Process.Name)
-				pid = fmt.Sprintf("%d", p.Process.PID)
-			} else if p.PID > 0 {
-				pid = fmt.Sprintf("%d", p.PID)
-			}
+			name, pid := nameAndPID(p)
 			fmt.Printf("  %s:%d  %-12s  PID %s\n", p.Address, p.Number, name, pid)
 		}
 	}
@@ -437,7 +420,6 @@ func truncate(s string, max int) string {
 }
 
 func detectProjectName(cwd string) string {
-	home, _ := os.UserHomeDir()
 	dir := cwd
 	for {
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
@@ -448,9 +430,6 @@ func detectProjectName(cwd string) string {
 			break
 		}
 		dir = parent
-	}
-	if strings.HasPrefix(cwd, home) {
-		return filepath.Base(cwd)
 	}
 	return filepath.Base(cwd)
 }

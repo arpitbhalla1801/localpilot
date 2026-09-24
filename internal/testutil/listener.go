@@ -77,6 +77,18 @@ func StartListenerHelper(t *testing.T, port int) *ListenerHelper {
 	return h
 }
 
+// waitOr blocks until ch delivers, or fails the test with msg on timeout.
+func waitOr(t *testing.T, ch <-chan error, timeout time.Duration, msg string) error {
+	t.Helper()
+	select {
+	case err := <-ch:
+		return err
+	case <-time.After(timeout):
+		t.Fatal(msg)
+		return nil
+	}
+}
+
 // WaitListening blocks until the helper process reports it's listening,
 // or fails the test if it doesn't within the timeout.
 func (h *ListenerHelper) WaitListening(t *testing.T) {
@@ -86,13 +98,8 @@ func (h *ListenerHelper) WaitListening(t *testing.T) {
 		_, err := h.out.ReadString('\n')
 		done <- err
 	}()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("helper process did not report listening: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for helper process to listen")
+	if err := waitOr(t, done, 5*time.Second, "timed out waiting for helper process to listen"); err != nil {
+		t.Fatalf("helper process did not report listening: %v", err)
 	}
 }
 
@@ -102,11 +109,7 @@ func (h *ListenerHelper) WaitExit(t *testing.T, timeout time.Duration) {
 	t.Helper()
 	done := make(chan error, 1)
 	go func() { done <- h.Cmd.Wait() }()
-	select {
-	case <-done:
-	case <-time.After(timeout):
-		t.Fatal("helper process did not exit in time")
-	}
+	waitOr(t, done, timeout, "helper process did not exit in time")
 }
 
 // Stop kills the helper process if it's still running.

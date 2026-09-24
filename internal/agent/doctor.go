@@ -132,37 +132,19 @@ func detectSameDefaultPort(ports []models.Port) []models.Conflict {
 // checked in .env (PORT=) then package.json (a --port flag in scripts).
 // It's best-effort: any read/parse failure just means "not declared" here.
 func declaredPort(cwd string) (int, bool) {
-	if p, ok := declaredPortFromEnv(cwd); ok {
+	if p, ok := declaredPortFrom(cwd, ".env", envPortRe); ok {
 		return p, true
 	}
-	if p, ok := declaredPortFromPackageJSON(cwd); ok {
-		return p, true
-	}
-	return 0, false
+	return declaredPortFrom(cwd, "package.json", scriptPortRe)
 }
 
-func declaredPortFromEnv(cwd string) (int, bool) {
-	data, err := os.ReadFile(filepath.Join(cwd, ".env"))
+// declaredPortFrom returns the first port re captures from cwd/file, if valid.
+func declaredPortFrom(cwd, file string, re *regexp.Regexp) (int, bool) {
+	data, err := os.ReadFile(filepath.Join(cwd, file))
 	if err != nil {
 		return 0, false
 	}
-	m := envPortRe.FindSubmatch(data)
-	if m == nil {
-		return 0, false
-	}
-	port, err := strconv.Atoi(string(m[1]))
-	if err != nil || port < 1 || port > 65535 {
-		return 0, false
-	}
-	return port, true
-}
-
-func declaredPortFromPackageJSON(cwd string) (int, bool) {
-	data, err := os.ReadFile(filepath.Join(cwd, "package.json"))
-	if err != nil {
-		return 0, false
-	}
-	m := scriptPortRe.FindSubmatch(data)
+	m := re.FindSubmatch(data)
 	if m == nil {
 		return 0, false
 	}

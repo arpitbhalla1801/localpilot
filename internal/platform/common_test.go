@@ -80,8 +80,8 @@ func writeMarker(t *testing.T, dir, name string) {
 
 // --- Coverage for the rest of common.go's core logic (#36) ---
 //
-// enrichProcess, listPortsForPID, findListeningPort, listAllListeningPorts,
-// and killPID had no dedicated tests before this: every command (list,
+// EnrichProcess, listPortsForPID, FindListeningPort, ListAllListeningPorts,
+// and KillPID had no dedicated tests before this: every command (list,
 // port, inspect, kill, free, watch, doctor) depends on them for port/
 // process discovery, so a regression here would previously only surface
 // live. These bind real listeners and spawn a real (killable) helper
@@ -95,9 +95,9 @@ func TestListenHelperProcess(t *testing.T) { testutil.ListenHelperMain() }
 
 func TestEnrichProcess_CurrentProcess(t *testing.T) {
 	pid := int32(os.Getpid())
-	proc, err := enrichProcess(context.Background(), pid)
+	proc, err := EnrichProcess(context.Background(), pid)
 	if err != nil {
-		t.Fatalf("enrichProcess(self): %v", err)
+		t.Fatalf("EnrichProcess(self): %v", err)
 	}
 	if proc.PID != pid {
 		t.Errorf("PID = %d, want %d", proc.PID, pid)
@@ -109,8 +109,8 @@ func TestEnrichProcess_CurrentProcess(t *testing.T) {
 
 func TestEnrichProcess_NonexistentPID(t *testing.T) {
 	// A PID that's very unlikely to exist. gopsutil's NewProcess (and thus
-	// enrichProcess) should return an error rather than a zero-value process.
-	if _, err := enrichProcess(context.Background(), 1<<30); err == nil {
+	// EnrichProcess) should return an error rather than a zero-value process.
+	if _, err := EnrichProcess(context.Background(), 1<<30); err == nil {
 		t.Error("expected an error for a nonexistent PID, got nil")
 	}
 }
@@ -134,21 +134,21 @@ func TestFindListeningPort_InUseAndFree(t *testing.T) {
 	helper := testutil.StartListenerHelper(t, port)
 	helper.WaitListening(t)
 
-	binding, err := findListeningPort(context.Background(), port)
+	binding, err := FindListeningPort(context.Background(), port)
 	if err != nil {
-		t.Fatalf("findListeningPort(in use): %v", err)
+		t.Fatalf("FindListeningPort(in use): %v", err)
 	}
 	if !binding.InUse {
-		t.Skip("port not detected as in use — some sandboxes reap spawned child processes almost immediately; not a real failure of findListeningPort's logic")
+		t.Skip("port not detected as in use — some sandboxes reap spawned child processes almost immediately; not a real failure of FindListeningPort's logic")
 	}
 	if binding.Process == nil || binding.Process.PID != int32(helper.Cmd.Process.Pid) {
 		t.Errorf("binding.Process = %+v, want PID %d", binding.Process, helper.Cmd.Process.Pid)
 	}
 
 	freePortNum := testutil.FreePort(t)
-	binding, err = findListeningPort(context.Background(), freePortNum)
+	binding, err = FindListeningPort(context.Background(), freePortNum)
 	if err != nil {
-		t.Fatalf("findListeningPort(free port): %v", err)
+		t.Fatalf("FindListeningPort(free port): %v", err)
 	}
 	if binding.InUse {
 		t.Errorf("binding.InUse = true for an unused port %d", freePortNum)
@@ -160,16 +160,16 @@ func TestListAllListeningPorts_FindsRealListener(t *testing.T) {
 	helper := testutil.StartListenerHelper(t, port)
 	helper.WaitListening(t)
 
-	ports, err := listAllListeningPorts(context.Background())
+	ports, err := ListAllListeningPorts(context.Background())
 	if err != nil {
-		t.Fatalf("listAllListeningPorts: %v", err)
+		t.Fatalf("ListAllListeningPorts: %v", err)
 	}
 	for _, p := range ports {
 		if p.Number == port {
 			return
 		}
 	}
-	t.Skipf("port %d not found in listAllListeningPorts result — some sandboxes reap spawned child processes almost immediately; not a real failure of listAllListeningPorts' logic", port)
+	t.Skipf("port %d not found in ListAllListeningPorts result — some sandboxes reap spawned child processes almost immediately; not a real failure of ListAllListeningPorts' logic", port)
 }
 
 func TestKillPID_Force(t *testing.T) {
@@ -177,8 +177,8 @@ func TestKillPID_Force(t *testing.T) {
 	helper := testutil.StartListenerHelper(t, port)
 	helper.WaitListening(t)
 
-	if err := killPID(context.Background(), int32(helper.Cmd.Process.Pid), true /* force */); err != nil {
-		t.Fatalf("killPID(force=true): %v", err)
+	if err := KillPID(context.Background(), int32(helper.Cmd.Process.Pid), true /* force */); err != nil {
+		t.Fatalf("KillPID(force=true): %v", err)
 	}
 	helper.WaitExit(t, 5*time.Second)
 }
@@ -188,14 +188,14 @@ func TestKillPID_Graceful(t *testing.T) {
 	helper := testutil.StartListenerHelper(t, port)
 	helper.WaitListening(t)
 
-	if err := killPID(context.Background(), int32(helper.Cmd.Process.Pid), false /* force */); err != nil {
-		t.Fatalf("killPID(force=false): %v", err)
+	if err := KillPID(context.Background(), int32(helper.Cmd.Process.Pid), false /* force */); err != nil {
+		t.Fatalf("KillPID(force=false): %v", err)
 	}
 	helper.WaitExit(t, 5*time.Second)
 }
 
 func TestKillPID_NonexistentPID(t *testing.T) {
-	if err := killPID(context.Background(), 1<<30, true); err == nil {
+	if err := KillPID(context.Background(), 1<<30, true); err == nil {
 		t.Error("expected an error for a nonexistent PID, got nil")
 	}
 }
@@ -212,7 +212,7 @@ func TestKillPID_TerminateAndKillBothFail(t *testing.T) {
 		t.Skip("PID 4 (System) is a Windows-specific protected process; no equally reliable cross-platform double-failure case")
 	}
 
-	err := killPID(context.Background(), 4, false /* force */)
+	err := KillPID(context.Background(), 4, false /* force */)
 	if err == nil {
 		t.Fatal("expected an error killing the protected System process, got nil")
 	}
@@ -236,7 +236,7 @@ func containsInt(s []int, v int) bool {
 
 // --- UDP coverage (#38) ---
 //
-// listPortsForPID/findListeningPort/listAllListeningPorts previously
+// listPortsForPID/FindListeningPort/ListAllListeningPorts previously
 // filtered strictly on Status == "LISTEN", which is a TCP-only concept —
 // UDP sockets are connectionless and gopsutil typically reports them with
 // an empty/"NONE" status even while actively bound, so any UDP-bound port
@@ -281,16 +281,16 @@ func TestListAllListeningPorts_FindsRealUDPSocket(t *testing.T) {
 	defer conn.Close()
 	port := conn.LocalAddr().(*stdnet.UDPAddr).Port
 
-	ports, err := listAllListeningPorts(context.Background())
+	ports, err := ListAllListeningPorts(context.Background())
 	if err != nil {
-		t.Fatalf("listAllListeningPorts: %v", err)
+		t.Fatalf("ListAllListeningPorts: %v", err)
 	}
 	for _, p := range ports {
 		if p.Number == port && p.Protocol == "udp" {
 			return
 		}
 	}
-	t.Errorf("bound UDP port %d not found in listAllListeningPorts result: %+v", port, ports)
+	t.Errorf("bound UDP port %d not found in ListAllListeningPorts result: %+v", port, ports)
 }
 
 func TestListPortsForPID_FindsRealUDPSocket(t *testing.T) {

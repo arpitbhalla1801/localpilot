@@ -69,7 +69,7 @@ func TestDetectProject_NoGit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	proj := detectProject(sub)
+	proj := DetectProject(sub)
 	if proj == nil {
 		t.Fatal("expected non-nil project")
 	}
@@ -79,14 +79,14 @@ func TestDetectProject_NoGit(t *testing.T) {
 	if proj.Path != sub {
 		t.Errorf("Path = %q, want %q", proj.Path, sub)
 	}
-	if proj.Repository != "" || proj.Branch != "" || proj.Framework != "" {
+	if proj.Branch != "" || proj.Framework != "" {
 		t.Errorf("expected empty repo/branch/framework outside git, got %+v", proj)
 	}
 }
 
 func TestDetectProject_EmptyCwd(t *testing.T) {
-	if got := detectProject(""); got != nil {
-		t.Errorf("detectProject(\"\") = %+v, want nil", got)
+	if got := DetectProject(""); got != nil {
+		t.Errorf("DetectProject(\"\") = %+v, want nil", got)
 	}
 }
 
@@ -117,7 +117,7 @@ func TestDetectProject_WithGitAndFramework(t *testing.T) {
 	run("init", "-q", "-b", "main")
 	run("commit", "--allow-empty", "-q", "-m", "init")
 
-	proj := detectProject(repo)
+	proj := DetectProject(repo)
 	if proj == nil {
 		t.Fatal("expected non-nil project")
 	}
@@ -170,19 +170,5 @@ func TestParseEnviron(t *testing.T) {
 	}
 	if got["A"] != "B=C" {
 		t.Errorf("A = %q, want B=C (split on first '=' only)", got["A"])
-	}
-}
-
-func TestNewProvider(t *testing.T) {
-	provider, err := NewProvider()
-	// On Linux/macOS this must succeed; elsewhere it must return a clear error.
-	if err != nil {
-		if provider != nil {
-			t.Errorf("expected nil provider on error, got %v", provider)
-		}
-		return
-	}
-	if provider == nil {
-		t.Error("expected non-nil provider when err is nil")
 	}
 }

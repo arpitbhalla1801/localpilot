@@ -17,7 +17,7 @@ var sensitivePatterns = []string{
 // but whose value has a recognizable, vendor-specific shape.
 var sensitiveValuePrefixes = []string{
 	"sk_live_", "sk_test_", // Stripe secret keys
-	"AKIA", // AWS access key IDs
+	"akia", // AWS access key IDs
 }
 
 // MaskEnvironment redacts sensitive environment variable values.
@@ -50,7 +50,7 @@ func isSensitive(key string) bool {
 func hasSensitiveValueShape(value string) bool {
 	lower := strings.ToLower(value)
 	for _, prefix := range sensitiveValuePrefixes {
-		if strings.HasPrefix(lower, strings.ToLower(prefix)) {
+		if strings.HasPrefix(lower, prefix) {
 			return true
 		}
 	}

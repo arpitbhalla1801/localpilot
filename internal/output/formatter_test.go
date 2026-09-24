@@ -79,16 +79,6 @@ func TestFormatTime(t *testing.T) {
 	}
 }
 
-func TestFormatStarted(t *testing.T) {
-	if got := formatStarted(time.Time{}); got != "unknown" {
-		t.Errorf("formatStarted(zero) = %q, want unknown", got)
-	}
-	recent := time.Now().Add(-5 * time.Minute)
-	if got := formatStarted(recent); got != "5 minutes ago" {
-		t.Errorf("formatStarted(recent) = %q, want '5 minutes ago'", got)
-	}
-}
-
 func TestSanitize(t *testing.T) {
 	tests := []struct {
 		in   string

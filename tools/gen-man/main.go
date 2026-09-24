@@ -25,12 +25,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	now := time.Now()
 	header := &doc.GenManHeader{
 		Title:   "LOCALPILOT",
 		Section: "1",
 		Source:  "LocalPilot",
 		Manual:  "LocalPilot Manual",
-		Date:    ptrTime(time.Now()),
+		Date:    &now,
 	}
 
 	if err := doc.GenManTree(cli.RootCommand(), header, outDir); err != nil {
@@ -40,5 +41,3 @@ func main() {
 
 	fmt.Printf("generated man pages in %s\n", outDir)
 }
-
-func ptrTime(t time.Time) *time.Time { return &t }
