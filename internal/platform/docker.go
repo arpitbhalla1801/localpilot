@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -49,12 +50,25 @@ type dockerPSEntry struct {
 // rather than an error, so callers don't need special-case handling for
 // "Docker isn't in play here".
 func ListDockerContainerPorts(ctx context.Context) map[int]*models.Container {
+	result := map[int]*models.Container{}
+	for _, c := range ListDockerContainers(ctx) {
+		for _, port := range c.Ports {
+			result[port] = c
+		}
+	}
+	return result
+}
+
+// ListDockerContainers returns the running containers that publish at least
+// one host port, sorted by their lowest host port. Same best-effort contract
+// as ListDockerContainerPorts: any Docker failure yields nil.
+func ListDockerContainers(ctx context.Context) []*models.Container {
 	out, err := dockerOutput(ctx, "ps", "--format", "{{json .}}")
 	if err != nil {
 		return nil
 	}
 
-	result := map[int]*models.Container{}
+	var result []*models.Container
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		if line == "" {
 			continue
@@ -64,13 +78,13 @@ func ListDockerContainerPorts(ctx context.Context) map[int]*models.Container {
 			continue
 		}
 		container := containerFromPSEntry(entry)
-		for _, port := range parseDockerHostPorts(entry.Ports) {
-			result[port] = container
+		container.Ports = parseDockerHostPorts(entry.Ports)
+		if len(container.Ports) > 0 {
+			sort.Ints(container.Ports)
+			result = append(result, container)
 		}
 	}
-	if len(result) == 0 {
-		return nil
-	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Ports[0] < result[j].Ports[0] })
 	return result
 }
 

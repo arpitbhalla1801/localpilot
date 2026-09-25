@@ -298,3 +298,25 @@ func socketTypeName(sockType uint32) string {
 		return fmt.Sprintf("socket-%d", sockType)
 	}
 }
+
+// IsSystemOrBackgroundProcess reports whether name is an OS or well-known
+// background service that list/dashboard hide and stale detection skips.
+func IsSystemOrBackgroundProcess(name string) bool {
+	lower := strings.ToLower(name)
+	switch lower {
+	// Core Windows System processes
+	case "system", "svchost.exe", "lsass.exe", "wininit.exe", "services.exe", "spoolsv.exe", "csrss.exe", "smss.exe", "explorer.exe", "cmrcservice.exe", "pangps.exe", "jhi_service.exe", "wepsvc.exe", "fppsvc.exe", "searchindexer.exe":
+		return true
+	// Background services / daemons (Windows, macOS, Linux)
+	case "mysqld.exe", "postgres.exe", "docker.exe", "wslrelay.exe", "code.exe",
+		"mysqld", "postgres", "dockerd", "docker", "containerd",
+		"controlcenter", "rapportd", "coreaudiod", "corebrightnessd",
+		"coreservicesd", "cfprefsd", "distnoted", "usernoted", "notifyd",
+		"bluetoothd", "wifianalyticsd", "wifivelocityd", "locationd",
+		"launchd", "systemd", "systemd-resolved", "systemd-journald",
+		"systemd-logind", "systemd-udevd", "dbus-daemon", "cron", "crond",
+		"code helper", "code helper (plugin)", "code helper (renderer)", "code helper (gpu)":
+		return true
+	}
+	return false
+}

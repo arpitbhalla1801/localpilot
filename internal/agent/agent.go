@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"time"
 
 	"github.com/arpitbhalla1801/localpilot/internal/models"
 	"github.com/arpitbhalla1801/localpilot/internal/platform"
@@ -74,4 +75,31 @@ func (a *Agent) ListPorts(ctx context.Context) ([]models.Port, error) {
 		ports[i].WSL = wsl[ports[i].Number]
 	}
 	return ports, nil
+}
+
+// DefaultStaleAfter is the process age past which a port becomes a stale
+// candidate.
+const DefaultStaleAfter = 48 * time.Hour
+
+// MarkStale sets Port.Stale on ports whose process is older than after, is
+// not a system/background process, and is idle per
+// platform.IdlePIDs (no established connections, no CPU/IO progress).
+func (a *Agent) MarkStale(ctx context.Context, ports []models.Port, after time.Duration) {
+	var pids []int32
+	seen := map[int32]bool{}
+	for _, p := range ports {
+		proc := p.Process
+		if proc == nil || proc.StartTime.IsZero() || time.Since(proc.StartTime) <= after || platform.IsSystemOrBackgroundProcess(proc.Name) || seen[proc.PID] {
+			continue
+		}
+		seen[proc.PID] = true
+		pids = append(pids, proc.PID)
+	}
+
+	idle := platform.IdlePIDs(ctx, pids)
+	for i := range ports {
+		if p := ports[i].Process; p != nil && idle[p.PID] {
+			ports[i].Stale = true
+		}
+	}
 }

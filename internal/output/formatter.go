@@ -39,7 +39,8 @@ func sanitize(s string) string {
 	return b.String()
 }
 
-func formatBytes(bytes uint64) string {
+// FormatBytes renders a byte count in human units.
+func FormatBytes(bytes uint64) string {
 	const unit = 1024
 	if bytes < unit {
 		return fmt.Sprintf("%d B", bytes)
@@ -65,13 +66,13 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%d days", int(d.Hours()/24))
 }
 
-func formatTime(t time.Time) string {
+// FormatTime renders a clock time, or "unknown" for the zero time.
+func FormatTime(t time.Time) string {
 	if t.IsZero() {
 		return "unknown"
 	}
 	return t.Format("15:04:05")
 }
-
 
 const rule = "────────────────────────────────────"
 
@@ -101,8 +102,8 @@ func PrintPortDoctor(binding *models.PortBinding) {
 	fmt.Printf("PID             %d\n", proc.PID)
 	fmt.Printf("Name            %s\n", sanitize(proc.Name))
 	fmt.Printf("CPU             %.1f%%\n", proc.CPUPercent)
-	fmt.Printf("Memory          %s\n", formatBytes(proc.MemoryBytes))
-	fmt.Printf("Started         %s\n", formatTime(proc.StartTime))
+	fmt.Printf("Memory          %s\n", FormatBytes(proc.MemoryBytes))
+	fmt.Printf("Started         %s\n", FormatTime(proc.StartTime))
 
 	section("Command")
 	if proc.Command != "" {
@@ -175,8 +176,8 @@ func PrintInspect(proc *models.Process, project *models.Project) {
 	fmt.Printf("PID             %d\n", proc.PID)
 	fmt.Printf("Name            %s\n", sanitize(proc.Name))
 	fmt.Printf("CPU             %.1f%%\n", proc.CPUPercent)
-	fmt.Printf("Memory          %s\n", formatBytes(proc.MemoryBytes))
-	fmt.Printf("Started         %s\n", formatTime(proc.StartTime))
+	fmt.Printf("Memory          %s\n", FormatBytes(proc.MemoryBytes))
+	fmt.Printf("Started         %s\n", FormatTime(proc.StartTime))
 
 	if proc.Container != nil {
 		fmt.Println()
@@ -265,7 +266,7 @@ func PrintList(ports []models.Port) {
 		status := "● RUNNING"
 		container := "-"
 
-		if p.Process != nil && !p.Process.StartTime.IsZero() && time.Since(p.Process.StartTime) > 48*time.Hour && !IsSystemOrBackgroundProcess(name) {
+		if p.Stale {
 			status = "⚠ STALE"
 		}
 
@@ -276,7 +277,26 @@ func PrintList(ports []models.Port) {
 		}
 
 		addr := fmt.Sprintf("%s:%d", p.Address, p.Number)
-		fmt.Printf("%-20s %-12s %-8s %-8s %-10s %s\n", truncate(addr, 20), truncate(name, 12), fmt.Sprintf("%d", p.Number), pid, truncate(container, 10), status)
+		fmt.Printf("%-20s %-12s %-8s %-8s %-10s %s\n", Truncate(addr, 20), Truncate(name, 12), fmt.Sprintf("%d", p.Number), pid, Truncate(container, 10), status)
+	}
+}
+
+// PrintDockerList renders running containers and the host ports they publish.
+func PrintDockerList(containers []*models.Container) {
+	if len(containers) == 0 {
+		fmt.Println("No running containers with published ports found.")
+		return
+	}
+
+	fmt.Println("DOCKER")
+	fmt.Printf("%-24s %-28s %s\n", "CONTAINER", "IMAGE", "HOST PORTS")
+	fmt.Println(strings.Repeat("─", 72))
+	for _, c := range containers {
+		ports := make([]string, len(c.Ports))
+		for i, p := range c.Ports {
+			ports[i] = fmt.Sprintf("%d", p)
+		}
+		fmt.Printf("%-24s %-28s %s\n", Truncate(sanitize(c.Name), 24), Truncate(sanitize(c.Image), 28), strings.Join(ports, ", "))
 	}
 }
 
@@ -350,14 +370,14 @@ func PrintDoctor(conflicts []models.Conflict) {
 // PrintDashboard is the default view when running `localpilot`.
 func PrintDashboard(ports []models.Port) {
 	fmt.Println()
-	fmt.Println("┌────────────────────────────────────────────────────────────────────────┐")
-	fmt.Println("│                          LOCALPILOT                                  │")
-	fmt.Println("├──────────┬──────────┬─────────────────────┬──────────┬─────────────────┤")
-	fmt.Println("│ PROJECT  │ SERVICE  │ PORT                │ PROCESS  │ STATUS          │")
-	fmt.Println("├──────────┼──────────┼─────────────────────┼──────────┼─────────────────┤")
+	fmt.Println("┌────────────────────────────────────────────────────────────────────────────────────────────────┐")
+	fmt.Println("│                                           LOCALPILOT                                           │")
+	fmt.Println("├──────────────────┬──────────────────┬─────────────────────┬──────────────────┬─────────────────┤")
+	fmt.Println("│ PROJECT          │ SERVICE          │ PORT                │ PROCESS          │ STATUS          │")
+	fmt.Println("├──────────────────┼──────────────────┼─────────────────────┼──────────────────┼─────────────────┤")
 
 	if len(ports) == 0 {
-		fmt.Println("│ (no listening ports detected)                                        │")
+		fmt.Println("│ (no listening ports detected)                                                                 │")
 	} else {
 		for _, p := range ports {
 			project := "-"
@@ -370,11 +390,11 @@ func PrintDashboard(ports []models.Port) {
 				if p.Process.Cwd != "" {
 					detected := detectProjectName(p.Process.Cwd)
 					if detected != "" {
-						project = truncate(sanitize(detected), 10)
+						project = Truncate(sanitize(detected), 16)
 					}
-					service = truncate(sanitize(filepath.Base(p.Process.Cwd)), 10)
+					service = Truncate(sanitize(filepath.Base(p.Process.Cwd)), 16)
 				}
-				if !p.Process.StartTime.IsZero() && time.Since(p.Process.StartTime) > 48*time.Hour && !IsSystemOrBackgroundProcess(processName) {
+				if p.Stale {
 					status = "⚠ Stale"
 				}
 			}
@@ -394,24 +414,25 @@ func PrintDashboard(ports []models.Port) {
 			}
 
 			portStr := fmt.Sprintf("%s:%d", p.Address, p.Number)
-			fmt.Printf("│ %-8s │ %-8s │ %-19s │ %-8s │ %-15s │\n",
-				truncate(project, 8),
-				truncate(service, 8),
+			fmt.Printf("│ %-16s │ %-16s │ %-19s │ %-16s │ %-15s │\n",
+				Truncate(project, 16),
+				Truncate(service, 16),
 				portStr,
-				truncate(processName, 8),
-				truncate(status, 15),
+				Truncate(processName, 16),
+				Truncate(status, 15),
 			)
 		}
 	}
 
-	fmt.Println("└──────────┴──────────┴─────────────────────┴──────────┴─────────────────┘")
+	fmt.Println("└──────────────────┴──────────────────┴─────────────────────┴──────────────────┴─────────────────┘")
 	fmt.Println()
 	fmt.Printf("  %d ports listening\n", len(ports))
 	fmt.Println()
 	fmt.Println("Commands: localpilot port <PORT> | inspect <PID> | kill <PID|PORT> | list")
 }
 
-func truncate(s string, max int) string {
+// Truncate shortens s to max runes, ending in an ellipsis when cut.
+func Truncate(s string, max int) string {
 	r := []rune(s)
 	if len(r) <= max {
 		return s
@@ -432,24 +453,4 @@ func detectProjectName(cwd string) string {
 		dir = parent
 	}
 	return filepath.Base(cwd)
-}
-
-func IsSystemOrBackgroundProcess(name string) bool {
-	lower := strings.ToLower(name)
-	switch lower {
-	// Core Windows System processes
-	case "system", "svchost.exe", "lsass.exe", "wininit.exe", "services.exe", "spoolsv.exe", "csrss.exe", "smss.exe", "explorer.exe", "cmrcservice.exe", "pangps.exe", "jhi_service.exe", "wepsvc.exe", "fppsvc.exe", "searchindexer.exe":
-		return true
-	// Background services / daemons (Windows, macOS, Linux)
-	case "mysqld.exe", "postgres.exe", "docker.exe", "wslrelay.exe", "code.exe",
-		"mysqld", "postgres", "dockerd", "docker", "containerd",
-		"controlcenter", "rapportd", "coreaudiod", "corebrightnessd",
-		"coreservicesd", "cfprefsd", "distnoted", "usernoted", "notifyd",
-		"bluetoothd", "wifianalyticsd", "wifivelocityd", "locationd",
-		"launchd", "systemd", "systemd-resolved", "systemd-journald",
-		"systemd-logind", "systemd-udevd", "dbus-daemon", "cron", "crond",
-		"code helper", "code helper (plugin)", "code helper (renderer)", "code helper (gpu)":
-		return true
-	}
-	return false
 }

@@ -35,7 +35,7 @@ func ListenHelperMain() {
 	}
 	defer l.Close()
 	fmt.Println("listening")
-	select {}
+	time.Sleep(time.Hour)
 }
 
 // FreePort finds a currently-unused TCP port by briefly binding to port 0.

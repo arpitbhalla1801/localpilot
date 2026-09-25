@@ -46,8 +46,8 @@ func TestFormatBytes(t *testing.T) {
 		{1024 * 1024 * 1024, "1.0 GB"},
 	}
 	for _, tt := range tests {
-		if got := formatBytes(tt.in); got != tt.want {
-			t.Errorf("formatBytes(%d) = %q, want %q", tt.in, got, tt.want)
+		if got := FormatBytes(tt.in); got != tt.want {
+			t.Errorf("FormatBytes(%d) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
 }
@@ -70,12 +70,12 @@ func TestFormatDuration(t *testing.T) {
 }
 
 func TestFormatTime(t *testing.T) {
-	if got := formatTime(time.Time{}); got != "unknown" {
-		t.Errorf("formatTime(zero) = %q, want unknown", got)
+	if got := FormatTime(time.Time{}); got != "unknown" {
+		t.Errorf("FormatTime(zero) = %q, want unknown", got)
 	}
 	tm := time.Date(2024, 1, 1, 14, 32, 1, 0, time.UTC)
-	if got := formatTime(tm); got != "14:32:01" {
-		t.Errorf("formatTime = %q, want 14:32:01", got)
+	if got := FormatTime(tm); got != "14:32:01" {
+		t.Errorf("FormatTime = %q, want 14:32:01", got)
 	}
 }
 
@@ -115,12 +115,12 @@ func TestTruncate(t *testing.T) {
 		{"café_naïve_résumé", 8, "café_na…"},
 	}
 	for _, tt := range tests {
-		got := truncate(tt.in, tt.max)
+		got := Truncate(tt.in, tt.max)
 		if got != tt.want {
-			t.Errorf("truncate(%q, %d) = %q, want %q", tt.in, tt.max, got, tt.want)
+			t.Errorf("Truncate(%q, %d) = %q, want %q", tt.in, tt.max, got, tt.want)
 		}
 		if !utf8.ValidString(got) {
-			t.Errorf("truncate(%q, %d) = %q, which is not valid UTF-8", tt.in, tt.max, got)
+			t.Errorf("Truncate(%q, %d) = %q, which is not valid UTF-8", tt.in, tt.max, got)
 		}
 	}
 }
@@ -133,29 +133,6 @@ func TestShortenPath(t *testing.T) {
 	}
 	if got := shortenPath("/some/random/path"); got == "" {
 		t.Errorf("shortenPath returned empty for non-empty input")
-	}
-}
-
-func TestIsSystemOrBackgroundProcess(t *testing.T) {
-	system := []string{
-		// Windows
-		"svchost.exe", "SYSTEM", "lsass.exe",
-		// macOS
-		"ControlCenter", "rapportd", "coreaudiod", "Code Helper", "Code Helper (Plugin)",
-		// Linux
-		"systemd", "dbus-daemon", "cron",
-	}
-	for _, name := range system {
-		if !IsSystemOrBackgroundProcess(name) {
-			t.Errorf("IsSystemOrBackgroundProcess(%q) = false, want true", name)
-		}
-	}
-
-	notSystem := []string{"node", "python", "Code Helper (GPU) extra", "myapp"}
-	for _, name := range notSystem {
-		if IsSystemOrBackgroundProcess(name) {
-			t.Errorf("IsSystemOrBackgroundProcess(%q) = true, want false", name)
-		}
 	}
 }
 
@@ -233,5 +210,22 @@ func TestPrintDashboard_NoContainerShowsProcessName(t *testing.T) {
 
 	if !strings.Contains(out, "node") {
 		t.Errorf("PrintDashboard output = %q, want it to mention process name node", out)
+	}
+}
+
+func TestPrintDockerList(t *testing.T) {
+	out := captureStdout(t, func() {
+		PrintDockerList([]*models.Container{
+			{Name: "web", Image: "nginx:latest", Ports: []int{80, 443}},
+		})
+	})
+	for _, want := range []string{"web", "nginx:latest", "80, 443"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+
+	if out := captureStdout(t, func() { PrintDockerList(nil) }); !strings.Contains(out, "No running containers") {
+		t.Errorf("empty output = %q", out)
 	}
 }

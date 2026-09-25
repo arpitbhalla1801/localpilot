@@ -106,3 +106,18 @@ func TestKillCmd_JSON_InvalidPID(t *testing.T) {
 		t.Fatal("expected error for an invalid PID/port target")
 	}
 }
+
+// TestDockerCmd_JSON must always emit a JSON array, even when Docker is
+// absent (nil list), so scripts can iterate it unconditionally.
+func TestDockerCmd_JSON(t *testing.T) {
+	var out bytes.Buffer
+	rootCmd.SetOut(&out)
+	rootCmd.SetArgs([]string{"docker", "--json"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("docker --json: %v", err)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not a JSON array: %v\noutput: %s", err, out.String())
+	}
+}

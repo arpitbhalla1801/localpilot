@@ -28,6 +28,9 @@ type Port struct {
 	Process   *Process    `json:"process,omitempty"`
 	Container *Container  `json:"container,omitempty"`
 	WSL       *WSLProcess `json:"wsl,omitempty"`
+	// Stale is set by agent.MarkStale: long-running, not a system process,
+	// and showing no recent activity.
+	Stale bool `json:"stale,omitempty"`
 }
 
 // Container identifies the Docker container publishing a port, resolved
@@ -38,6 +41,9 @@ type Container struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Image string `json:"image"`
+	// Ports are the host ports the container publishes; only populated by
+	// platform.ListDockerContainers.
+	Ports []int `json:"ports,omitempty"`
 }
 
 // WSLProcess identifies the process inside a WSL distro actually behind a

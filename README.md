@@ -120,6 +120,7 @@ localpilot doctor
 | `localpilot` | Show the localhost dashboard |
 | `localpilot list` | List running processes and listening ports |
 | `localpilot list --range <start>-<end>` | Only show ports within a range, e.g. `3000-4000` |
+| `localpilot list --stale` | Only show stale ports: process older than `--stale-after` (default `48h`), no established connections, and no CPU/IO activity over a short sample |
 | `localpilot port <PORT>` | Find what is using a port |
 | `localpilot inspect <PID>` | Inspect a process in detail |
 | `localpilot kill <PID\|PORT>` | Safely terminate a process |
@@ -131,10 +132,13 @@ localpilot doctor
 | `localpilot watch <PID\|PORT>` | Live-updating view of a port or process, until Ctrl+C |
 | `localpilot watch --interval <duration>` | Set the refresh interval (default `1s`) |
 | `localpilot doctor` | Scan for port conflicts (multiple processes on one port, or projects configured for the same default port) |
+| `localpilot docker` | List running Docker containers and the host ports they publish |
+| `localpilot diagnose <host:port>` | Check TCP reachability (add `--http` for a status code, `--timeout`); exits non-zero if unreachable |
+| `localpilot tui` | Interactive live port view: `j`/`k` move, `enter` inspect, `x` kill (with confirmation), `q` quit; `--interval`, `--all` |
 
 ## Scripting with `--json`
 
-`list`, `port`, `inspect`, `kill`, `free`, and `doctor` all support `--json` for piping into `jq` or other tooling:
+`list`, `port`, `inspect`, `kill`, `free`, `doctor`, `docker`, and `diagnose` all support `--json` for piping into `jq` or other tooling:
 
 ```bash
 localpilot list --json | jq '.[].port'

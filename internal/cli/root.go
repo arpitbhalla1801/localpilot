@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -45,6 +46,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		ports = filterPorts(ports)
+		a.MarkStale(context.Background(), ports, agent.DefaultStaleAfter)
 
 		output.PrintDashboard(ports)
 		return nil
@@ -108,6 +110,7 @@ func init() {
 	rootCmd.AddCommand(freeCmd)
 	rootCmd.AddCommand(watchCmd)
 	rootCmd.AddCommand(doctorCmd)
+	rootCmd.AddCommand(dockerCmd)
 }
 
 var listJSON bool
@@ -130,7 +133,7 @@ func filterPorts(ports []models.Port) []models.Port {
 	var filtered []models.Port
 	for _, p := range ports {
 		// Hide processes we identify as system/background noise
-		if p.Process != nil && output.IsSystemOrBackgroundProcess(p.Process.Name) {
+		if p.Process != nil && platform.IsSystemOrBackgroundProcess(p.Process.Name) {
 			continue
 		}
 		// Also hide completely empty/restricted ports where no process info was found
@@ -142,7 +145,11 @@ func filterPorts(ports []models.Port) []models.Port {
 	return filtered
 }
 
-var listRange string
+var (
+	listRange      string
+	listStale      bool
+	listStaleAfter time.Duration
+)
 
 var listCmd = &cobra.Command{
 	Use:   "list",
@@ -150,6 +157,7 @@ var listCmd = &cobra.Command{
 	Example: "  localpilot list\n" +
 		"  localpilot list --all               # include system/background processes\n" +
 		"  localpilot list --range 3000-4000   # only a known dev-server port band\n" +
+		"  localpilot list --stale             # old, idle processes with no established connections\n" +
 		"  localpilot list --json | jq '.[].port'",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		a, err := agent.New()
@@ -172,10 +180,33 @@ var listCmd = &cobra.Command{
 			ports = filterPortRange(ports, start, end)
 		}
 
+		a.MarkStale(context.Background(), ports, listStaleAfter)
+		if listStale {
+			ports = slices.DeleteFunc(ports, func(p models.Port) bool { return !p.Stale })
+		}
+
 		if listJSON {
 			return printJSON(cmd.OutOrStdout(), nonNil(ports))
 		}
 		output.PrintList(ports)
+		return nil
+	},
+}
+
+var dockerJSON bool
+
+var dockerCmd = &cobra.Command{
+	Use:   "docker",
+	Short: "List running Docker containers and their published host ports",
+	Example: "  localpilot docker\n" +
+		"  localpilot docker --json | jq '.[].name'",
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		containers := platform.ListDockerContainers(context.Background())
+		if dockerJSON {
+			return printJSON(cmd.OutOrStdout(), nonNil(containers))
+		}
+		output.PrintDockerList(containers)
 		return nil
 	},
 }
@@ -687,7 +718,10 @@ func init() {
 	freeOpts.register(freeCmd)
 	watchCmd.Flags().DurationVar(&watchInterval, "interval", time.Second, "Refresh interval (e.g. 1s, 500ms)")
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "Output as JSON")
+	listCmd.Flags().BoolVar(&listStale, "stale", false, "Only show stale ports (old, idle, no established connections)")
+	listCmd.Flags().DurationVar(&listStaleAfter, "stale-after", agent.DefaultStaleAfter, "Minimum process age before it can be considered stale")
 	listCmd.Flags().StringVar(&listRange, "range", "", "Only show ports within <start>-<end>, e.g. 3000-4000")
+	dockerCmd.Flags().BoolVar(&dockerJSON, "json", false, "Output as JSON")
 	portCmd.Flags().BoolVar(&portJSON, "json", false, "Output as JSON")
 	inspectCmd.Flags().BoolVar(&inspectJSON, "json", false, "Output as JSON")
 	doctorCmd.Flags().BoolVar(&doctorJSON, "json", false, "Output as JSON")
